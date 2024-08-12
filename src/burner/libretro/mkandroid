@@ -33,6 +33,8 @@ JNICALL_DIR := $(CURRENT_DIR)/jni
 LIBS_TARGET_PATH := $(CURRENT_DIR)/libs
 # 编译命令
 COMPILE_CMD := ndk-build $(APP_ABI_FLAG) $(NDK_BUILD_J_FLAG)
+# 获取当前时间
+Current_Date := $(shell date +%Y%m%d)
 
 # 默认目标
 all: build rename
@@ -49,7 +51,7 @@ create_temp_android_mk:
 	# 把非官方的cpp文件加入到原编译脚本LOCAL_SRC_FILES的下面一行，添加的行：LOCAL_SRC_FILES+=\$$(LOCAL_PATH)/../macrokeys.cpp
 	@sed -i '/^LOCAL_SRC_FILES/a LOCAL_SRC_FILES+=\$$(LOCAL_PATH)/../macrokeys.cpp' "$(JNICALL_DIR)/Android.mk.temp"
 	# 使用 sed 将两行自定版本号插入到 Android.mk.temp 的顶部
-	@sed -i "1i override GIT_VERSION := \"aGuGu\\\'s FBNeo\"\nCXXFLAGS += -DGIT_VERSION=\"\$$(GIT_VERSION)\"" "$(JNICALL_DIR)/Android.mk.temp"
+	@sed -i "1i override GIT_VERSION := \"aGuGu\\\'s FBNeo in $(Current_Date)\"\nCXXFLAGS += -DGIT_VERSION=\"\$$(GIT_VERSION)\"" "$(JNICALL_DIR)/Android.mk.temp"
 	@cd $(JNICALL_DIR) && \
 		mv Android.mk Android.mk.backup && \
 		cp Android.mk.temp Android.mk

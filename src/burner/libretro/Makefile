@@ -54,9 +54,10 @@ else ifneq (,$(findstring rpi,$(platform)))
 	override platform += unix
 endif
 
+Current_Date := $(shell date +%Y%m%d)
 MAIN_FBNEO_DIR	:= ../..
 VERSION_SCRIPT	:= $(MAIN_FBNEO_DIR)/burner/libretro/link.T
-override GIT_VERSION := "aGuGu\'s FBNeo"
+override GIT_VERSION := "aGuGu\'s FBNeo in $(Current_Date)"
 CXXFLAGS += -DGIT_VERSION=\"$(GIT_VERSION)\"
 
 # TARGET
