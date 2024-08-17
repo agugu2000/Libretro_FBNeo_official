@@ -47,6 +47,8 @@ static UINT8 DrvInputs[2];
 static UINT8 DrvDips[2];
 static UINT8 DrvReset;
 
+static INT32 nExtraCycles;
+
 static struct BurnInputInfo PunchoutInputList[] = {
 	{"P1 Coin",		BIT_DIGITAL,	DrvJoy2 + 7,	"p1 coin"	},
 	{"P1 Up",		BIT_DIGITAL,	DrvJoy2 + 2,	"p1 up"		},
@@ -506,8 +508,11 @@ static INT32 DrvDoReset()
 	M6502Close();
 
 	vlm5030Reset(0);
+	nesapuReset();
 
 	spunchout_prot_mode = 0;
+
+	nExtraCycles = 0;
 
 	HiscoreReset();
 
@@ -598,12 +603,7 @@ static void DrvPaletteInit(INT32 off, INT32 bank, INT32 reverse)
 
 static INT32 CommonInit(INT32 (*pInitCallback)(), INT32 punchout, INT32 reverse_palette, UINT32 gfx_xor)
 {
-	AllMem = NULL;
-	MemIndex();
-	INT32 nLen = MemEnd - (UINT8 *)0;
-	if ((AllMem = (UINT8 *)BurnMalloc(nLen)) == NULL) return 1;
-	memset(AllMem, 0, nLen);
-	MemIndex();
+	BurnAllocMemIndex();
 
 	memset (DrvGfxROM0, 0xff, 0x020000);
 	memset (DrvGfxROM1, 0xff, 0x020000);
@@ -680,10 +680,11 @@ static INT32 CommonInit(INT32 (*pInitCallback)(), INT32 punchout, INT32 reverse_
 	M6502Close();
 
 	vlm5030Init(0, 3580000, punchout_vlm_sync, DrvVLMROM, 0x4000, 1);
-	vlm5030SetAllRoutes(0, 0.50, BURN_SND_ROUTE_BOTH);
+	vlm5030SetAllRoutes(0, 0.70, BURN_SND_ROUTE_BOTH);
 
 	nesapuInit(0, 1789773, 0, punchout_nesapu_sync, 0);
-	nesapuSetAllRoutes(0, 0.50, BURN_SND_ROUTE_BOTH);
+	nesapuSetAllRoutes(0, 0.70, BURN_SND_ROUTE_BOTH);
+	nesapuSetArcade(1);
 
 	GenericTilesInit();
 
@@ -700,7 +701,7 @@ static INT32 DrvExit()
 	vlm5030Exit();
 	nesapuExit();
 
-	BurnFree (AllMem);
+	BurnFreeMemIndex();
 
 	return 0;
 }
@@ -737,7 +738,7 @@ static void predraw_big_sprite(UINT16 *bitmap, UINT8 *ram, UINT8 *rom, INT32 bpp
 
 static void draw_layer(UINT8 *ram, UINT8 *rom, INT32 wide, INT32 paloff, INT32 scroll, INT32 allow_flip)
 {
-	for (INT32 i = wide * 2; i < wide * 30; i++)
+	for (INT32 i = wide * 2; i < wide * 32; i++)
 	{
 		INT32 sx = (i % wide) * 8;
 		INT32 sy = (i / wide) * 8;
@@ -755,21 +756,15 @@ static void draw_layer(UINT8 *ram, UINT8 *rom, INT32 wide, INT32 paloff, INT32 s
 
 		if (scroll)
 		{
-			INT32 scrollx = ram[(sy/8)*2] + ((ram[(sy/8)*2+1] & 0x01) << 8);
+			INT32 scrollx = ram[2*(sy/8)] + ((ram[2*(sy/8)+1] & 0x01) << 8);
 
 			sx -= (56 + scrollx) & 0x1ff;
-			if (sx < -7) sx += 256;
+			if (sx < -7) sx += 512;
 		}
 
 		sy -= 16;
-
-		if (sx >= nScreenWidth) continue;
-
-		if (flipx) {
-			Render8x8Tile_FlipX_Clip(pTransDraw, code, sx, sy, color, 2, paloff, rom);
-		} else {
-			Render8x8Tile_Clip(pTransDraw, code, sx, sy, color, 2, paloff, rom);
-		}
+		if (sx >= nScreenWidth || sy >= 224) continue;
+		Draw8x8Tile(pTransDraw, code, sx, sy, flipx, 0, color, 2, paloff, rom);
 	}
 }
 
@@ -1061,9 +1056,9 @@ static INT32 DrvFrame()
 		}
 	}
 
-	INT32 nInterleave = 10;
+	INT32 nInterleave = 32;
 	INT32 nCyclesTotal[2] = { 4000000 / 60, 1789773 / 60 };
-	INT32 nCyclesDone[2] = { 0, 0 };
+	INT32 nCyclesDone[2] = { nExtraCycles, 0 };
 
 	ZetNewFrame();
 	M6502NewFrame();
@@ -1073,24 +1068,20 @@ static INT32 DrvFrame()
 
 	for (INT32 i = 0; i < nInterleave; i++)
 	{
-		INT32 nSegment = nCyclesTotal[0] / nInterleave;
+		CPU_RUN(0, Zet);
+		if (i == (nInterleave - 1) && *interrupt_enable) ZetNmi();
 
-		nCyclesDone[0] += ZetRun(nSegment);
-
-		nSegment = nCyclesTotal[1] / nInterleave;
-
-		nCyclesDone[1] += M6502Run(nSegment);
+		CPU_RUN(1, M6502);
+		if (i == (nInterleave - 1)) M6502SetIRQLine(M6502_INPUT_LINE_NMI, CPU_IRQSTATUS_AUTO);
 	}
-
-	if (*interrupt_enable) ZetNmi();
-
-	M6502SetIRQLine(M6502_INPUT_LINE_NMI, CPU_IRQSTATUS_AUTO);
 
 	nesapuUpdate(0, pBurnSoundOut, nBurnSoundLen);
 	vlm5030Update(0, pBurnSoundOut, nBurnSoundLen);
 
 	M6502Close();
 	ZetClose();
+
+	nExtraCycles = nCyclesDone[0] - nCyclesTotal[0];
 
 	if (pBurnDraw) {
 		BurnDrvRedraw();
@@ -1099,7 +1090,7 @@ static INT32 DrvFrame()
 	return 0;
 }
 
-static INT32 DrvScan(INT32 nAction,INT32 *pnMin)
+static INT32 DrvScan(INT32 nAction, INT32 *pnMin)
 {
 	struct BurnArea ba;
 
@@ -1107,7 +1098,7 @@ static INT32 DrvScan(INT32 nAction,INT32 *pnMin)
 		*pnMin = 0x029521;
 	}
 
-	if (nAction & ACB_VOLATILE) {		
+	if (nAction & ACB_VOLATILE) {
 		memset(&ba, 0, sizeof(ba));
 
 		ba.Data	  = AllRam;
@@ -1121,6 +1112,8 @@ static INT32 DrvScan(INT32 nAction,INT32 *pnMin)
 		nesapuScan(nAction, pnMin);
 
 		SCAN_VAR(spunchout_prot_mode);
+
+		SCAN_VAR(nExtraCycles);
 	}
 
 	if (nAction & ACB_NVRAM) {
