@@ -13,6 +13,7 @@
 #include "retro_input.h"
 #include "retro_memory.h"
 #include "ugui_tools.h"
+#include "non_official_features.h"
 
 #include <file/file_path.h>
 
@@ -147,6 +148,7 @@ TCHAR szAppHDDPath[MAX_PATH];
 TCHAR szAppCheatsPath[MAX_PATH];
 TCHAR szAppIpsesPath[MAX_PATH];
 TCHAR szAppRomdatasPath[MAX_PATH];
+TCHAR szAppCommandPath[MAX_PATH];
 TCHAR szAppPathDefPath[MAX_PATH];
 TCHAR szAppBurnVer[16];
 
@@ -505,7 +507,7 @@ extern unsigned int (__cdecl *BurnHighCol) (signed int r, signed int g, signed i
 
 void retro_get_system_info(struct retro_system_info *info)
 {
-	char *library_version = (char*)calloc(22, sizeof(char));
+	char *library_version = (char*)calloc(100, sizeof(char));//  自用改版本号
 
 #ifndef GIT_VERSION
 #define GIT_VERSION ""
@@ -1147,6 +1149,7 @@ static bool open_archive()
 				if (index < 0)
 				{
 					if ((g_find_list_path[z].ignoreCrc && bPatchedRomsetsEnabled) ||
+						(bAllowIgnoreCrc && bPatchedRomsetsEnabled) ||							//Allow ignore crc mode
 						((NULL != pDataRomDesc) && (-1 != pRDI->nDescCount)))					// In romdata mode
 					{
 						index = find_rom_by_name(rom_name, list, count, &real_rom_crc);
@@ -1383,6 +1386,7 @@ void retro_reset()
 	check_variables();
 	apply_dipswitches_from_variables();
 	apply_cheats_from_variables();
+	apply_ChooseCheatFile_from_variables();
 
 	// RomData & IPS Patches can be selected before retro_reset() and will be reset after retro_reset(),
 	// at which point the data is processed and returned to determine whether to subsequently Reset or Re-Init.
@@ -1403,6 +1407,8 @@ void retro_reset()
 		// eeproms are loading nCurrentFrame, but we probably don't want this
 		nCurrentFrame = 0;
 	}
+
+	SetReSetControllers();
 
 	// romdata & ips patches run!
 	if ((-1 != nIndex) || (nPatches > 0))
@@ -1970,8 +1976,11 @@ static bool retro_load_game_common()
 	// Initialize Ipses path
 	snprintf_nowarn(szAppIpsesPath, sizeof(szAppIpsesPath), "%s%cfbneo%cips%c", g_system_dir, PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C());
 
-	// Initialize Ipses path
+	// Initialize Romdatas path
 	snprintf_nowarn(szAppRomdatasPath, sizeof(szAppRomdatasPath), "%s%cfbneo%cromdata%c", g_system_dir, PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C());
+
+	// Initialize Command path
+	snprintf_nowarn(szAppCommandPath, sizeof(szAppCommandPath), "%s%cfbneo%ccommand%c", g_system_dir, PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C());
 
 	// Initialize Multipath definition path
 	snprintf_nowarn(szAppPathDefPath, sizeof(szAppPathDefPath), "%s%cfbneo%cpath%c", g_system_dir, PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C());
@@ -2028,6 +2037,8 @@ static bool retro_load_game_common()
 		}
 
 		bIsNeogeoCartGame = ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_SNK_NEOGEO);
+		bIsPgmCartGame = ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_IGS_PGM);
+		bIsCps1CartGame = ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_CAPCOM_CPS1 || (BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_CAPCOM_CPS1_QSOUND);
 
 		// Define nMaxPlayers early;
 		nMaxPlayers = BurnDrvGetMaxPlayers();
@@ -2064,6 +2075,7 @@ static bool retro_load_game_common()
 		reset_cheats_from_variables();
 		reset_ipses_from_variables();
 		reset_romdatas_from_variables();
+		SetCheatFileChooseOptionValue();
 
 		// Apply core options
 		check_variables();
@@ -2510,6 +2522,7 @@ void retro_unload_game(void)
 		free(pRomFind);
 		pRomFind = NULL;
 	}
+	apply_ChooseCheatFile_from_variables();
 	InputExit();
 	CheevosExit();
 	RomDataExit();

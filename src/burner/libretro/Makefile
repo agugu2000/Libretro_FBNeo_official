@@ -54,16 +54,21 @@ else ifneq (,$(findstring rpi,$(platform)))
 	override platform += unix
 endif
 
+Current_Date := $(shell date +%Y%m%d)
 MAIN_FBNEO_DIR	:= ../..
 VERSION_SCRIPT	:= $(MAIN_FBNEO_DIR)/burner/libretro/link.T
+override GIT_VERSION := "Modified by aGuGu on $(Current_Date)"
+CXXFLAGS += -DGIT_VERSION=\"$(GIT_VERSION)\"
 
 # TARGET
 ifeq ($(subset),)
 	TARGET_NAME := fbneo
 	INCLUDED_MAKEFILE = Makefile.common
+	SOURCES_CXX += $(LIBRETRO_DIR)/non_official_features.cpp
 else
 	TARGET_NAME := fbneo_$(subset)
 	INCLUDED_MAKEFILE = Makefile.$(subset)
+	SOURCES_CXX += $(LIBRETRO_DIR)/non_official_features.cpp
 endif
 
 # Unix
@@ -491,13 +496,13 @@ else ifneq (,$(findstring windows_msvc2017,$(platform)))
 
 	export INCLUDE := $(INCLUDE);$(WindowsSDKSharedIncludeDir);$(WindowsSDKUCRTIncludeDir);$(WindowsSDKUMIncludeDir)
 	export LIB := $(LIB);$(WindowsSDKUCRTLibDir);$(WindowsSDKUMLibDir)
-	TARGET := $(TARGET_NAME)_libretro.dll
+	TARGET := $(TARGET_NAME)_advanced_libretro.dll
 	PSS_STYLE :=2
 	LDFLAGS += -DLL
 
 # Windows
 else
-	TARGET := $(TARGET_NAME)_libretro.dll
+	TARGET := $(TARGET_NAME)_advanced_libretro.dll
 	CC ?= gcc
 	CXX ?= g++
 	SHARED := -shared -Wl,-no-undefined -Wl,--version-script=$(VERSION_SCRIPT)

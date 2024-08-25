@@ -1,6 +1,7 @@
 #ifndef __RETRO_STRING__
 #define __RETRO_STRING__
 
+#define MAX_LANGUAGES	3
 #define NUM_STRING	141
 
 extern const char* pSelLangStr[NUM_STRING];

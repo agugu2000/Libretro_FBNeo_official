@@ -1,6 +1,5 @@
 #include "retro_common.h"
-
-#define MAX_LANGUAGES	3
+#include "non_official_features.h"
 
 const char *pSelLangStr[NUM_STRING];
 
@@ -473,6 +472,11 @@ void set_multi_language_strings()
 
 	for (UINT32 i = 0; i < NUM_STRING; i++)
 		pSelLangStr[i] = multi_language_strings[nLangcode][i];
+
+	//非官方增加部分
+	for (UINT32 i = 0; i < NUM_STRING_NONOFFICIAL; i++)
+		pSelLangStrNonOfficial[i] = multi_language_strings_nonofficial[nLangcode][i];
+
 }
 
 #undef NUM_STRING
