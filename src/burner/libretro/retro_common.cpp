@@ -1,5 +1,6 @@
 #include "retro_common.h"
 #include "retro_input.h"
+#include "non_official_features.h"
 
 struct RomBiosInfo neogeo_bioses[] = {
 	{"sp-s3.sp1",         0x91b64be3, 0x00, "MVS Asia/Europe ver. 6 (1 slot)", NEOGEO_MVS | NEOGEO_EUR, 0 },
@@ -43,10 +44,13 @@ struct GameInp *pgi_diag;
 struct GameInp *pgi_debug_dip_1;
 struct GameInp *pgi_debug_dip_2;
 bool bIsNeogeoCartGame                = false;
+bool bIsPgmCartGame                   = false;
+bool bIsCps1CartGame                  = false;
 bool allow_neogeo_mode                = true;
 bool neogeo_use_specific_default_bios = false;
 bool bAllowDepth32                    = false;
 bool bPatchedRomsetsEnabled           = true;
+bool bAllowIgnoreCrc                  = false;
 bool bLibretroSupportsAudioBuffStatus = false;
 bool bLowPassFilterEnabled            = false;
 UINT32 nVerticalMode                  = 0;
@@ -242,6 +246,20 @@ static struct retro_core_option_v2_definition var_fbneo_allow_patched_romsets = 
 		{ NULL,       NULL },
 	},
 	"enabled"
+};
+static struct retro_core_option_v2_definition var_fbneo_allow_ignore_crc = {
+	"fbneo-allow-ignore-crc",
+	"Allow Ignore CRC",
+	NULL,
+	"The prerequisite is to enable 'Allow patched romsets'. Allowing rom with the correct file name and file size to run by ignoring CRC check. \nNote:By ignoring the CRC check, the game content loaded may not align with the intended game content",
+	NULL,
+	NULL,
+	{
+		{ "disabled", NULL },
+		{ "enabled",  NULL },
+		{ NULL,       NULL },
+	},
+	"disabled"
 };
 static struct retro_core_option_v2_definition var_fbneo_samplerate = {
 	"fbneo-samplerate",
@@ -876,10 +894,11 @@ void evaluate_neogeo_bios_mode(const char* drvname)
 	}
 }
 
+struct retro_core_option_v2_definition *option_defs_us;
 void set_environment()
 {
 	std::vector<const retro_core_option_v2_definition*> vars_systems;
-	struct retro_core_option_v2_definition *option_defs_us;
+
 #ifdef _MSC_VER
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
 	#ifndef FORCE_USE_VFS
@@ -911,6 +930,10 @@ void set_environment()
 	var_fbneo_allow_patched_romsets.info                   = RETRO_PATCHED_CAT_INFO;
 	vars_systems.push_back(&var_fbneo_allow_patched_romsets);
 
+	var_fbneo_allow_ignore_crc.desc                        = RETRO_IGNORE_CRC_DESC;
+	var_fbneo_allow_ignore_crc.info                        = RETRO_IGNORE_CRC_INFO;
+	vars_systems.push_back(&var_fbneo_allow_ignore_crc);
+
 	var_fbneo_analog_speed.desc                            = RETRO_ANALOG_CAT_DESC;
 	var_fbneo_analog_speed.info                            = RETRO_ANALOG_CAT_INFO;
 	vars_systems.push_back(&var_fbneo_analog_speed);
@@ -938,6 +961,9 @@ void set_environment()
 		var_fbneo_hiscores.info = RETRO_HISCORES_CAT_INFO;
 		vars_systems.push_back(&var_fbneo_hiscores);
 	}
+
+	// 添加作弊码源的选择
+	vars_systems = AddCheatfileChooseOption(vars_systems);
 
 	if (pgi_diag)
 	{
@@ -1146,12 +1172,17 @@ void set_environment()
 	int nbr_cheats   = cheat_core_options.size();
 	int nbr_ipses    = ips_core_options.size();
 	int nbr_romdatas = romdata_core_options.size();
+	int nbr_pgm_macros = get_macro_count("pgm");
+	int nbr_neogeo_macros = get_macro_count("neogeo");
+	int nbr_cps1_macros = get_macro_count("cps1");
+	int nbr_streetfighter_macros = get_macro_count("streetfighter");
+	int nbr_command_dat = get_command_dat_count();
 
 #if 0
 	log_cb(RETRO_LOG_INFO, "set_environment: SYSTEM: %d, DIPSWITCH: %d\n", nbr_vars, nbr_dips);
 #endif
 
-	option_defs_us = (struct retro_core_option_v2_definition*)calloc(nbr_vars + nbr_dips + nbr_cheats + nbr_ipses + nbr_romdatas + 1, sizeof(struct retro_core_option_v2_definition));
+	option_defs_us = (struct retro_core_option_v2_definition*)calloc(nbr_vars + nbr_dips + nbr_cheats + nbr_ipses + nbr_romdatas + nbr_neogeo_macros + nbr_pgm_macros + nbr_cps1_macros + nbr_streetfighter_macros + nbr_command_dat +1, sizeof(struct retro_core_option_v2_definition));
 
 	int idx_var = 0;
 
@@ -1169,6 +1200,40 @@ void set_environment()
 		option_defs_us[idx_var].desc             = dipswitch_core_options[dip_idx].friendly_name.c_str();
 		option_defs_us[idx_var].desc_categorized = dipswitch_core_options[dip_idx].friendly_name_categorized.c_str();
 		option_defs_us[idx_var].default_value    = dipswitch_core_options[dip_idx].default_bdi.szText;
+
+		// 修改DIP中国化开始(注:并非PGM专属，所有含有中国三区的任意都无脑改了)
+		// 判断区域设置中是否含中国的三个地区（中港台）
+		std::string friendly_name_lower = dipswitch_core_options[dip_idx].friendly_name;
+		std::transform(friendly_name_lower.begin(), friendly_name_lower.end(), friendly_name_lower.begin(), ::tolower);
+		static int highest_priority = -1; // 初始化一个用于比较的最高优先级
+
+		if (friendly_name_lower.find("region") != std::string::npos) {
+			int priority = -1; // 设置优先级标识
+
+			for (int dip_value_idx = 0; dip_value_idx < dipswitch_core_options[dip_idx].values.size(); dip_value_idx++) {
+				std::string value_lower = dipswitch_core_options[dip_idx].values[dip_value_idx].friendly_name;
+				std::transform(value_lower.begin(), value_lower.end(), value_lower.begin(), ::tolower);
+				bool reset_default = false;
+
+				if (value_lower == "china") {
+					priority = 2;
+				} else if (value_lower == "taiwan") {
+					priority = 1;
+				} else if (value_lower == "hong kong") {
+					priority = 0;
+				}
+				// 如果当前优先级高于已设置的最高优先级，则更新默认值，保证优先级china>taiwan>HK
+				if (priority > highest_priority) {
+					reset_default = true;
+					highest_priority = priority;
+				}
+				if (reset_default) {
+					option_defs_us[idx_var].default_value = dipswitch_core_options[dip_idx].values[dip_value_idx].friendly_name.c_str();
+				}
+			}
+		}
+		// 修改DIP中国化结束
+
 		// Instead of filtering out the dips, make the description a warning if it's a neogeo game using a different default bios
 		if (neogeo_use_specific_default_bios && bIsNeogeoCartGame && dipswitch_core_options[dip_idx].friendly_name.compare("[Dipswitch] BIOS") == 0)
 			option_defs_us[idx_var].info         = RETRO_NGBIOS_DEF_INFO_0;
@@ -1228,6 +1293,24 @@ void set_environment()
 		idx_var++;
 	}
 
+	if (bIsNeogeoCartGame || (nGameType == RETRO_GAME_TYPE_NEOCD)) {
+		idx_var = AddMacroOptions("neogeo", nbr_neogeo_macros, idx_var);
+	}
+
+	if (bIsPgmCartGame) {
+		idx_var = AddMacroOptions("pgm", nbr_pgm_macros, idx_var);
+	}
+
+	if (bIsCps1TraditionCartGame) {
+		idx_var = AddMacroOptions("cps1", nbr_cps1_macros, idx_var);
+	}
+
+	if (bStreetFighterLayout) {
+		idx_var = AddMacroOptions("streetfighter", nbr_streetfighter_macros, idx_var);
+	}
+
+	idx_var = AddCommandDatOptions(idx_var);
+
 	option_defs_us[idx_var] = var_empty;
 
 	static struct retro_core_option_v2_category option_cats_us[] =
@@ -1266,6 +1349,31 @@ void set_environment()
 			"romdata",
 			"RomData",
 			RETRO_ROMDATA_CAT_INFO
+		},
+		{
+			"neogeo_macro",
+			neogeo_macro_desc,
+			macro_info_general
+		},
+		{
+			"pgm_macro",
+			pgm_macro_desc,
+			macro_info_general
+		},
+		{
+			"cps1_macro",
+			cps1_macro_desc,
+			macro_info_general
+		},
+		{
+			"streetfighter_macro",
+			streetfighter_macro_desc,
+			macro_info_general
+		},
+		{
+			"command_dat",
+			RETRO_COMMAND_DAT_CAT_DESC,
+			RETRO_COMMAND_DAT_CAT_INFO
 		},
 #ifdef FBNEO_DEBUG
 		{
@@ -1823,6 +1931,15 @@ void check_variables(void)
 			bPatchedRomsetsEnabled = true;
 		else
 			bPatchedRomsetsEnabled = false;
+	}
+
+	var.key = var_fbneo_allow_ignore_crc.key;
+	if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+	{
+		if (strcmp(var.value, "enabled") == 0)
+			bAllowIgnoreCrc = true;
+		else
+			bAllowIgnoreCrc = false;
 	}
 
 	if (nGameType != RETRO_GAME_TYPE_NEOCD)
