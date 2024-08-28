@@ -1037,12 +1037,20 @@ static SymbolMapping SymbolList[] = {
 	{ "_(", "●" }, { "@select", "[Ⓢⓔⓛ]" }, { "@charge", "[Ⓒⓗⓐⓡⓖⓔ]" },
 	{ "_*", "☆" }, { "@punch", "Ⓟ" }, { "@tap", "[ⓢⓉⓐⓟ]" },
 	{ "_&", "★" }, { "@kick", "Ⓚ" }, { "@button", "[Ⓑⓣⓝ?]" },
-	{ "_%", "△" }, { "@guard", "Ⓖ" }
+	{ "_%", "△" }, { "@guard", "Ⓖ" }, {"\u0020\u0020", "\u3000"}	//这里最后一个用来替换2个空格为全角，以便尽可能对齐中文出招表，用于只在中文时候替代
 };
 
 static std::map<std::string, std::string> symbolMap;
 void InitializeSymbolMap() {
-	for (int i = 0; i < sizeof(SymbolList) / sizeof(SymbolList[0]); ++i) {
+	// 判断是否中文界面替换全角空格对齐
+	int SymbolListSize = sizeof(SymbolList) / sizeof(SymbolList[0]);
+	UINT32 nLangcode = 0;
+	environ_cb(RETRO_ENVIRONMENT_GET_LANGUAGE, &nLangcode);
+	if (nLangcode != RETRO_LANGUAGE_CHINESE_SIMPLIFIED && nLangcode != RETRO_LANGUAGE_CHINESE_TRADITIONAL) {
+		SymbolListSize = sizeof(SymbolList) / sizeof(SymbolList[0])-1;
+	}
+
+	for (int i = 0; i < SymbolListSize; ++i) {  // SymbolListSize会随着界面使用中文与否来判断是不是把映射表的替换双空格为全角的元素初始化进映射数组
 		symbolMap[SymbolList[i].key] = SymbolList[i].value;
 	}
 }
