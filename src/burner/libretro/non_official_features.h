@@ -34,6 +34,7 @@ extern const char* multi_language_strings_nonofficial[MAX_LANGUAGES][NUM_STRING_
 #define RETRO_CHOOSE_CHEATFILE_ERR		    pSelLangStrNonOfficial[ 21]
 
 /* 添加组合键选项所需的变量等*/
+void initial_macro_categories();
 // 定义 macro_option_value 结构体
 struct macro_option_value {
 	const char* value;

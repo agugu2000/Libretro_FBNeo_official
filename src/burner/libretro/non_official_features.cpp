@@ -105,7 +105,7 @@ char* L3_button_description;
 macro_category var_fbneo_macro_categories[4];
 
 // 初始化宏选项,目前包含4个系统
-static void initial_macro_categories() {
+void initial_macro_categories() {
 	macro_category temp_var_fbneo_macro_categories[4] = {
 		{
 			// 全部的11种组合中"Buttons ACD"用不上-感谢ppx的jjsnake帮助查询整理
@@ -416,7 +416,6 @@ void AssignButtons(const char* system, const char* szName, const char* szInfo, i
 struct GameInp* AddMacroKeys(struct GameInp* pgi, int nPlayer, int nButtonsTwo[][2], int nButtonsFour[][4], int nPunchInputs[][3], int nKickInputs[][3], const char* system, UINT32& numMacroCount) {
 	struct BurnInputInfo bii;
 	// 从预设结构体中获得组合键组合
-	initial_macro_categories();
 	macro_category* category = NULL;
 	size_t num_categories = get_macro_categories_size();
 	for (size_t i = 0; i < num_categories; i++) {

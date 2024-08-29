@@ -476,7 +476,7 @@ void set_multi_language_strings()
 	//非官方增加部分
 	for (UINT32 i = 0; i < NUM_STRING_NONOFFICIAL; i++)
 		pSelLangStrNonOfficial[i] = multi_language_strings_nonofficial[nLangcode][i];
-
+	initial_macro_categories();
 }
 
 #undef NUM_STRING
