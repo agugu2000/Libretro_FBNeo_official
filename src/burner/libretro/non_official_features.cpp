@@ -1037,27 +1037,21 @@ static SymbolMapping SymbolList[] = {
 	{ "_(", "●" }, { "@select", "[Ⓢⓔⓛ]" }, { "@charge", "[Ⓒⓗⓐⓡⓖⓔ]" },
 	{ "_*", "☆" }, { "@punch", "Ⓟ" }, { "@tap", "[ⓢⓉⓐⓟ]" },
 	{ "_&", "★" }, { "@kick", "Ⓚ" }, { "@button", "[Ⓑⓣⓝ?]" },
-	{ "_%", "△" }, { "@guard", "Ⓖ" }, {"\u0020\u0020", "\u3000"}	//这里最后一个用来替换2个空格为全角，以便尽可能对齐中文出招表，用于只在中文时候替代
+	{ "_%", "△" }, { "@guard", "Ⓖ" }
 };
 
 static std::map<std::string, std::string> symbolMap;
-void InitializeSymbolMap() {
-	// 判断是否中文界面替换全角空格对齐
+static void InitializeSymbolMap() {
 	int SymbolListSize = sizeof(SymbolList) / sizeof(SymbolList[0]);
-	UINT32 nLangcode = 0;
-	environ_cb(RETRO_ENVIRONMENT_GET_LANGUAGE, &nLangcode);
-	if (nLangcode != RETRO_LANGUAGE_CHINESE_SIMPLIFIED && nLangcode != RETRO_LANGUAGE_CHINESE_TRADITIONAL) {
-		SymbolListSize = sizeof(SymbolList) / sizeof(SymbolList[0])-1;
-	}
-
-	for (int i = 0; i < SymbolListSize; ++i) {  // SymbolListSize会随着界面使用中文与否来判断是不是把映射表的替换双空格为全角的元素初始化进映射数组
+	for (int i = 0; i < SymbolListSize; ++i) {
 		symbolMap[SymbolList[i].key] = SymbolList[i].value;
 	}
 }
 
-std::string ReplaceSymbols(const std::string& input) {
+static std::string ReplaceSymbols(const std::string& input) {
 	std::string result = input;
 	std::map<std::string, std::string>::iterator it;
+
 	for (it = symbolMap.begin(); it != symbolMap.end(); ++it) {
 		size_t pos = 0;
 		while ((pos = result.find(it->first, pos)) != std::string::npos) {
@@ -1089,14 +1083,15 @@ static bool ReadCommand_Dat() {
 	TCHAR szFilename[MAX_PATH] = _T("");
 	bool foundInfo = false; // 标记是否找到有效的$info行，即是发现该ROM的出招表条目
 	FILE* cmdFile = NULL;
+	bool containsChinese = false;// 判断是否含中文，需要替换2个空格为全角空格，以便对齐某些图状攻略(如kovplus)
+
+	InitializeSymbolMap();
 
 	sprintf(szFilename, "%scommand.dat", szAppCommandPath);
 	cmdFile = fopen(szFilename, _T("rt"));
 	if (cmdFile == NULL) {
 		return false; // 文件打开失败
 	}
-
-	InitializeSymbolMap();
 
 	while (_fgetts(line, sizeof(line), cmdFile) != NULL) {
 		// 跳过#开头的行
@@ -1164,8 +1159,43 @@ static bool ReadCommand_Dat() {
 	while (!CommandDataLine.empty() && CommandDataLine.back().empty()) {
 		CommandDataLine.pop_back(); // 删除最后空元素
 	}
-	fclose(cmdFile);
 
+	// 判断CommandDataLine中是否含有中文字符
+	if (!CommandDataLine.empty()) {
+		for (int i = 0; i < CommandDataLine.size(); ++i) {
+			for (int j = 0; j < CommandDataLine[i].size(); ++j) {
+				unsigned char c1 = CommandDataLine[i][j];
+				if ((c1 & 0xF0) == 0xE0) { // 检查第一个字节是否以 1110 开头
+					if (j + 2 < CommandDataLine[i].size()) {
+						unsigned char c2 = CommandDataLine[i][j + 1];
+						unsigned char c3 = CommandDataLine[i][j + 2];
+						if ((c2 & 0xC0) == 0x80 && (c3 & 0xC0) == 0x80) { // 检查第二和第三个字节是否以 10 开头
+							unsigned int unicode = ((c1 & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F);
+							if (unicode >= 0x4E00 && unicode <= 0x9FFF) { // 常用汉字范围
+								containsChinese = true;
+								break; //只需要找到一个汉字就认为判断完毕跳出
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 如果含有中文字符，则把双空格替换为全角空格
+	if (containsChinese) {
+		for (int i = 0; i < CommandDataLine.size(); ++i) {
+			for (int j = 0; j < CommandDataLine[i].size(); ++j) {
+				size_t pos = 0;
+				while ((pos = CommandDataLine[i].find("  ", pos)) != std::string::npos) {
+					CommandDataLine[i].replace(pos, 2, "\u3000");
+					pos += 3; // 全角空格占用3个字节
+				}
+			}
+		}
+	}
+
+	fclose(cmdFile);
 	return foundInfo;
 }
 
