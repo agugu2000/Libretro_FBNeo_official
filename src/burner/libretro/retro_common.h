@@ -261,6 +261,7 @@ extern TCHAR szAppIpsesPath[MAX_PATH];
 extern TCHAR szAppRomdatasPath[MAX_PATH];
 extern TCHAR szAppCommandPath[MAX_PATH];
 extern struct retro_core_option_v2_definition* option_defs_us;
+extern UINT32 nDiagInputHoldCounter;
 
 char* str_char_replace(char* destination, char c_find, char c_replace);
 void set_neo_system_bios();
