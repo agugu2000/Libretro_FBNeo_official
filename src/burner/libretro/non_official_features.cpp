@@ -1087,8 +1087,8 @@ static bool ReadCommand_Dat() {
 	TCHAR buffer[256] = {0};
 	std::string LineStr;
 	std::string LastLineStr;
-    std::string token;
-    std::string drv_name(BurnDrvGetText(DRV_NAME));
+	std::string token;
+	std::string drv_name(BurnDrvGetText(DRV_NAME));
 	TCHAR szFilename[MAX_PATH] = _T("");
 	bool foundInfo = false; // 标记是否找到有效的$info行，即是发现该ROM的出招表条目
 	FILE* cmdFile = NULL;
