@@ -105,7 +105,7 @@ char* L3_button_description;
 macro_category var_fbneo_macro_categories[4];
 
 // 初始化宏选项,目前包含4个系统
-void initial_macro_categories() {
+static void initial_macro_categories() {
 	macro_category temp_var_fbneo_macro_categories[4] = {
 		{
 			// 全部的11种组合中"Buttons ACD"用不上-感谢ppx的jjsnake帮助查询整理
@@ -191,13 +191,22 @@ void initial_macro_categories() {
 
 
 // 计算 var_fbneo_macro_categories 的大小
-size_t get_macro_categories_size() {
+int get_macro_categories_size() {
+	if (var_fbneo_macro_categories[0].system == NULL) {
+		return 0;
+	}
 	return sizeof(var_fbneo_macro_categories) / sizeof(var_fbneo_macro_categories[0]);
 }
 
 // 得到宏按键的数量（也即是预设的L R L2 R2有多少，做成函数获得）
 int get_macro_count(const char* system) {
 	int count = 0;
+
+	// 判断var_fbneo_macro_categories是不是空的
+	if (var_fbneo_macro_categories[0].system == NULL) {
+		return 0;
+	}
+
 	for (int i = 0; i < sizeof(var_fbneo_macro_categories) / sizeof(var_fbneo_macro_categories[0]); i++) {
 		if (strcmp(var_fbneo_macro_categories[i].system, system) == 0) {
 			count = sizeof(var_fbneo_macro_categories[i].options) / sizeof(var_fbneo_macro_categories[i].options[0]);
@@ -209,8 +218,8 @@ int get_macro_count(const char* system) {
 
 // 添加核心选项
 int AddMacroOptions(const char* system, int nbr_macros, int idx_var) {
-	size_t macro_categories_size = get_macro_categories_size();
-	for (size_t i = 0; i < macro_categories_size; i++) {
+	int macro_categories_size = get_macro_categories_size();
+	for (int i = 0; i < macro_categories_size; i++) {
 		if (strcmp(var_fbneo_macro_categories[i].system, system) == 0) {
 			for (int macro_idx = 0; macro_idx < nbr_macros; macro_idx++) {
 				macro_option* option = &var_fbneo_macro_categories[i].options[macro_idx];
@@ -415,10 +424,11 @@ void AssignButtons(const char* system, const char* szName, const char* szInfo, i
 // 批量设定全部组合键
 struct GameInp* AddMacroKeys(struct GameInp* pgi, int nPlayer, int nButtonsTwo[][2], int nButtonsFour[][4], int nPunchInputs[][3], int nKickInputs[][3], const char* system, UINT32& numMacroCount) {
 	struct BurnInputInfo bii;
+	initial_macro_categories();
 	// 从预设结构体中获得组合键组合
 	macro_category* category = NULL;
-	size_t num_categories = get_macro_categories_size();
-	for (size_t i = 0; i < num_categories; i++) {
+	int num_categories = get_macro_categories_size();
+	for (int i = 0; i < num_categories; i++) {
 		if (strcmp(var_fbneo_macro_categories[i].system, system) == 0) {
 			category = &var_fbneo_macro_categories[i];
 			break;
