@@ -1172,17 +1172,14 @@ void set_environment()
 	int nbr_cheats   = cheat_core_options.size();
 	int nbr_ipses    = ips_core_options.size();
 	int nbr_romdatas = romdata_core_options.size();
-	int nbr_pgm_macros = get_macro_count("pgm");
-	int nbr_neogeo_macros = get_macro_count("neogeo");
-	int nbr_cps1_macros = get_macro_count("cps1");
-	int nbr_streetfighter_macros = get_macro_count("streetfighter");
+	int nbr_macros = get_macro_count();
 	int nbr_command_dat = get_command_dat_count();
 
 #if 0
 	log_cb(RETRO_LOG_INFO, "set_environment: SYSTEM: %d, DIPSWITCH: %d\n", nbr_vars, nbr_dips);
 #endif
 
-	option_defs_us = (struct retro_core_option_v2_definition*)calloc(nbr_vars + nbr_dips + nbr_cheats + nbr_ipses + nbr_romdatas + nbr_neogeo_macros + nbr_pgm_macros + nbr_cps1_macros + nbr_streetfighter_macros + nbr_command_dat +1, sizeof(struct retro_core_option_v2_definition));
+	option_defs_us = (struct retro_core_option_v2_definition*)calloc(nbr_vars + nbr_dips + nbr_cheats + nbr_ipses + nbr_romdatas + nbr_macros + nbr_command_dat + 1, sizeof(struct retro_core_option_v2_definition));
 
 	int idx_var = 0;
 
@@ -1294,19 +1291,19 @@ void set_environment()
 	}
 
 	if (bIsNeogeoCartGame || (nGameType == RETRO_GAME_TYPE_NEOCD)) {
-		idx_var = AddMacroOptions("neogeo", nbr_neogeo_macros, idx_var);
+		idx_var = AddMacroOptions("neogeo", nbr_macros, idx_var);
 	}
 
 	if (bIsPgmCartGame) {
-		idx_var = AddMacroOptions("pgm", nbr_pgm_macros, idx_var);
+		idx_var = AddMacroOptions("pgm", nbr_macros, idx_var);
 	}
 
 	if (bIsCps1TraditionCartGame) {
-		idx_var = AddMacroOptions("cps1", nbr_cps1_macros, idx_var);
+		idx_var = AddMacroOptions("cps1", nbr_macros, idx_var);
 	}
 
 	if (bStreetFighterLayout) {
-		idx_var = AddMacroOptions("streetfighter", nbr_streetfighter_macros, idx_var);
+		idx_var = AddMacroOptions("streetfighter", nbr_macros, idx_var);
 	}
 
 	idx_var = AddCommandDatOptions(idx_var);

@@ -70,15 +70,14 @@ struct CustomMacroKeys {
 };
 
 // 函数声明
-int get_macro_categories_size();
-int get_macro_count(const char* system);
+int get_macro_count();
 CustomMacroKeys LoadCustomMacroKeys(const char* system);
 int AddMacroOptions(const char* system, int nbr_macros, int idx_var);
 void BindCustomMacroKeys(const CustomMacroKeys& macrosdata, char* description, int nPlayer, unsigned int* nDeviceType, struct GameInp * pgi);
 
 // 外部变量声明
 //extern CustomMacroKeys macrodata;
-extern macro_category var_fbneo_macro_categories[];
+//extern macro_category var_fbneo_macro_categories;
 
 struct GameInp* AddMacroKeys(struct GameInp* pgi, int nPlayer, int nButtonsTwo[][2], int nButtonsFour[][4], int nPunchInputs[][3], int nKickInputs[][3], const char* system, UINT32& numMacroCount);
 void AssignButtons(const char* system, const char* szName, const char* szInfo, int nPlayer, int i, int nButtons[][4]);

@@ -102,10 +102,10 @@ char* L2_button_description;
 char* R3_button_description;
 char* L3_button_description;
 
-macro_category var_fbneo_macro_categories[4];
+macro_category var_fbneo_macro_categories;//initial_macro_categories只会处理当前目标系统，所以只需要存放一个系统的组合键
 
 // 初始化宏选项,目前包含4个系统
-static void initial_macro_categories() {
+static void initial_macro_categories(const char* system) {
 	macro_category temp_var_fbneo_macro_categories[4] = {
 		{
 			// 全部的11种组合中"Buttons ACD"用不上-感谢ppx的jjsnake帮助查询整理
@@ -186,76 +186,61 @@ static void initial_macro_categories() {
 			}
 		}
 	};
-	memcpy(var_fbneo_macro_categories, temp_var_fbneo_macro_categories, sizeof(temp_var_fbneo_macro_categories));
-}
-
-
-// 计算 var_fbneo_macro_categories 的大小
-int get_macro_categories_size() {
-	if (var_fbneo_macro_categories[0].system == NULL) {
-		return 0;
-	}
-	return sizeof(var_fbneo_macro_categories) / sizeof(var_fbneo_macro_categories[0]);
-}
-
-// 得到宏按键的数量（也即是预设的L R L2 R2有多少，做成函数获得）
-int get_macro_count(const char* system) {
-	int count = 0;
-
-	// 判断var_fbneo_macro_categories是不是空的
-	if (var_fbneo_macro_categories[0].system == NULL) {
-		return 0;
-	}
-
-	for (int i = 0; i < sizeof(var_fbneo_macro_categories) / sizeof(var_fbneo_macro_categories[0]); i++) {
-		if (strcmp(var_fbneo_macro_categories[i].system, system) == 0) {
-			count = sizeof(var_fbneo_macro_categories[i].options) / sizeof(var_fbneo_macro_categories[i].options[0]);
+	for (int i = 0; i < sizeof(temp_var_fbneo_macro_categories) / sizeof(temp_var_fbneo_macro_categories[0]); i++) {
+		if (strcmp(temp_var_fbneo_macro_categories[i].system, system) == 0) {
+			var_fbneo_macro_categories = temp_var_fbneo_macro_categories[i];
 			break;
 		}
 	}
-	return count;
+}
+
+// 得到宏按键的数量（也即是预设的L R L2 R2有多少，做成函数获得）
+// 注：var_fbneo_macro_categories经过initial_macro_categories处理后只有1个目标数组
+int get_macro_count() {
+
+	// 判断var_fbneo_macro_categories是不是空的
+	if (var_fbneo_macro_categories.system == NULL) {
+		return 0;
+	}
+	return sizeof(var_fbneo_macro_categories.options) / sizeof(var_fbneo_macro_categories.options[0]);
 }
 
 // 添加核心选项
 int AddMacroOptions(const char* system, int nbr_macros, int idx_var) {
-	int macro_categories_size = get_macro_categories_size();
-	for (int i = 0; i < macro_categories_size; i++) {
-		if (strcmp(var_fbneo_macro_categories[i].system, system) == 0) {
-			for (int macro_idx = 0; macro_idx < nbr_macros; macro_idx++) {
-				macro_option* option = &var_fbneo_macro_categories[i].options[macro_idx];
-				option_defs_us[idx_var].key = option->key;
-				option_defs_us[idx_var].desc = option->option_name;
-				option_defs_us[idx_var].desc_categorized = option->option_name;
-				option_defs_us[idx_var].info = option->info;
-				option_defs_us[idx_var].category_key = var_fbneo_macro_categories[i].category_name;
-				for (int value_idx = 0; option->values[value_idx].value != NULL; value_idx++) {
-					option_defs_us[idx_var].values[value_idx].value = option->values[value_idx].value;
-				}
-				option_defs_us[idx_var].default_value = option->default_value;
-				idx_var++;
+
+	if (strcmp(var_fbneo_macro_categories.system, system) == 0) {
+		for (int macro_idx = 0; macro_idx < nbr_macros; macro_idx++) {
+			macro_option* option = &var_fbneo_macro_categories.options[macro_idx];
+			option_defs_us[idx_var].key = option->key;
+			option_defs_us[idx_var].desc = option->option_name;
+			option_defs_us[idx_var].desc_categorized = option->option_name;
+			option_defs_us[idx_var].info = option->info;
+			option_defs_us[idx_var].category_key = var_fbneo_macro_categories.category_name;
+			for (int value_idx = 0; option->values[value_idx].value != NULL; value_idx++) {
+				option_defs_us[idx_var].values[value_idx].value = option->values[value_idx].value;
 			}
+			option_defs_us[idx_var].default_value = option->default_value;
+			idx_var++;
 		}
 	}
+
 	return idx_var;
 }
 
 // 把核心选项变量中的按键所设定的组合键宏的值提取出来
-static void ProcessMacroContents(const char* system, int nbr_macros, int num_categories, CustomMacroKeys& macrodata) {
-	for (int i = 0; i < num_categories; i++) {
-		if (strcmp(var_fbneo_macro_categories[i].system, system) == 0) {
-			for (int macro_idx = 0; macro_idx < nbr_macros; macro_idx++) {
-				macro_option* option = &var_fbneo_macro_categories[i].options[macro_idx];
-				struct retro_variable var = {0};
-				var.key = option->key;
+static void ProcessMacroContents(int nbr_macros, CustomMacroKeys& macrodata) {
 
-				if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
-					CustomMacroKey macroKey;
-					macroKey.system = var_fbneo_macro_categories[i].system;
-					macroKey.button = option->button; // 使用 button 成员存储宏选项的描述
-					macroKey.macroKey = var.value; // 使用 key 成员存储用户选择的值
-					macrodata.macrocontent.push_back(macroKey);
-				}
-			}
+	for (int macro_idx = 0; macro_idx < nbr_macros; macro_idx++) {
+		macro_option* option = &var_fbneo_macro_categories.options[macro_idx];
+		struct retro_variable var = {0};
+		var.key = option->key;
+
+		if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
+			CustomMacroKey macroKey;
+			//macroKey.system = var_fbneo_macro_categories.system;
+			macroKey.button = option->button; // 使用 button 成员存储宏选项的描述
+			macroKey.macroKey = var.value; // 使用 key 成员存储用户选择的值
+			macrodata.macrocontent.push_back(macroKey);
 		}
 	}
 }
@@ -264,14 +249,10 @@ static void ProcessMacroContents(const char* system, int nbr_macros, int num_cat
 CustomMacroKeys LoadCustomMacroKeys(const char* system) {
 	CustomMacroKeys macrodata;
 
-	int num_categories = sizeof(var_fbneo_macro_categories) / sizeof(var_fbneo_macro_categories[0]);
+	int nbr_macros = get_macro_count();
 
-	for (int i = 0; i < num_categories; i++) {
-		int nbr_macros = get_macro_count(var_fbneo_macro_categories[i].system);
-
-		if (strcmp(var_fbneo_macro_categories[i].system, system) == 0) {
-			ProcessMacroContents(system, nbr_macros, num_categories, macrodata);
-		}
+	if (strcmp(var_fbneo_macro_categories.system, system) == 0) {
+		ProcessMacroContents(nbr_macros, macrodata);
 	}
 
 	return macrodata;
@@ -326,7 +307,7 @@ void BindCustomMacroKeys(const CustomMacroKeys& macrosdata, char* description, i
 	std::map<std::string, int> keyCount; //储存比如<buttons AB>这样的key的出现的当前次数
 
 	for (int i = 0; i < macrosdata.macrocontent.size(); ++i) {
-		const std::string system = macrosdata.macrocontent[i].system;
+		//const std::string system = macrosdata.macrocontent[i].system;
 		std::string key = macrosdata.macrocontent[i].macroKey;
 		const char* button = macrosdata.macrocontent[i].button.c_str();
 
@@ -424,15 +405,12 @@ void AssignButtons(const char* system, const char* szName, const char* szInfo, i
 // 批量设定全部组合键
 struct GameInp* AddMacroKeys(struct GameInp* pgi, int nPlayer, int nButtonsTwo[][2], int nButtonsFour[][4], int nPunchInputs[][3], int nKickInputs[][3], const char* system, UINT32& numMacroCount) {
 	struct BurnInputInfo bii;
-	initial_macro_categories();
+	initial_macro_categories(system);
 	// 从预设结构体中获得组合键组合
 	macro_category* category = NULL;
-	int num_categories = get_macro_categories_size();
-	for (int i = 0; i < num_categories; i++) {
-		if (strcmp(var_fbneo_macro_categories[i].system, system) == 0) {
-			category = &var_fbneo_macro_categories[i];
-			break;
-		}
+
+	if (strcmp(var_fbneo_macro_categories.system, system) == 0) {
+		category = &var_fbneo_macro_categories;
 	}
 
 	if (!category) {
@@ -440,7 +418,7 @@ struct GameInp* AddMacroKeys(struct GameInp* pgi, int nPlayer, int nButtonsTwo[]
 		return pgi;
 	}
 
-	int num_prebindkeys = get_macro_count(system);// 实体键的数量，比如L R L2 R2则是4
+	int num_prebindkeys = get_macro_count();// 实体键的数量，比如L R L2 R2则是4
 	int num_combs = 0;
 	while (category->options[0].values[num_combs].value != NULL && strncmp(category->options[0].values[num_combs].value, "Buttons ", 8) == 0) {
 		num_combs++;

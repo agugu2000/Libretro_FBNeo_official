@@ -1939,23 +1939,19 @@ static INT32 GameInpSpecialOne(struct GameInp* pgi, INT32 nPlayer, char* szb, ch
 	}
 
 	if (bStreetFighterLayout) {
-		CustomMacroKeys macrosdata = LoadCustomMacroKeys("streetfighter");
-		BindCustomMacroKeys(macrosdata, description, nPlayer, nDeviceType, pgi);
+		BindCustomMacroKeys(LoadCustomMacroKeys("streetfighter"), description, nPlayer, nDeviceType, pgi);
 	}
 
 	if (bIsNeogeoCartGame || (nGameType == RETRO_GAME_TYPE_NEOCD)) {
-		CustomMacroKeys macrosdata = LoadCustomMacroKeys("neogeo");
-		BindCustomMacroKeys(macrosdata, description, nPlayer, nDeviceType, pgi);
+		BindCustomMacroKeys(LoadCustomMacroKeys("neogeo"), description, nPlayer, nDeviceType, pgi);
 	}
 
 	if (bIsPgmCartGame) {
-		CustomMacroKeys macrosdata = LoadCustomMacroKeys("pgm");
-		BindCustomMacroKeys(macrosdata, description, nPlayer, nDeviceType, pgi);
+		BindCustomMacroKeys(LoadCustomMacroKeys("pgm"), description, nPlayer, nDeviceType, pgi);
 	}
 
 	if (bIsCps1TraditionCartGame) {
-		CustomMacroKeys macrosdata = LoadCustomMacroKeys("cps1");
-		BindCustomMacroKeys(macrosdata, description, nPlayer, nDeviceType, pgi);
+		BindCustomMacroKeys(LoadCustomMacroKeys("cps1"), description, nPlayer, nDeviceType, pgi);
 	}
 
 	// Handle megadrive
