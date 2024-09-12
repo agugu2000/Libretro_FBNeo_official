@@ -1178,6 +1178,11 @@ static bool ReadCommand_Dat() {
 					CommandDataLine[i].replace(pos, 2, "\u3000");
 					pos += 3; // 全角空格占用3个字节
 				}
+				pos = 0;
+				while ((pos = CommandDataLine[i].find(" ", pos)) != std::string::npos) {
+					CommandDataLine[i].replace(pos, 1, "\u2002");
+					pos += 3; // 半角空格也占用3个字节
+				}
 			}
 		}
 	}
