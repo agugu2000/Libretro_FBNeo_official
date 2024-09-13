@@ -1169,11 +1169,21 @@ static bool ReadCommand_Dat() {
 		}
 	}
 
-	// 如果含有中文字符，则把双空格替换为全角空格
+	// 如果含有中文字符，则把双空格替换为全角空格,以此尽可能保证图形攻略的对齐
 	if (containsChinese) {
 		for (int i = 0; i < CommandDataLine.size(); ++i) {
 			for (int j = 0; j < CommandDataLine[i].size(); ++j) {
 				size_t pos = 0;
+				while ((pos = CommandDataLine[i].find("═", pos)) != std::string::npos) {
+					CommandDataLine[i].replace(pos, 3, "\uFF1D");
+					pos += 3; // 全角=号占用3个字节
+				}
+				pos = 0;
+				while ((pos = CommandDataLine[i].find("│", pos)) != std::string::npos) {
+					CommandDataLine[i].replace(pos, 3, "\uFF5C");
+					pos += 3; // 全角｜号占用3个字节
+				}
+				pos = 0;
 				while ((pos = CommandDataLine[i].find("  ", pos)) != std::string::npos) {
 					CommandDataLine[i].replace(pos, 2, "\u3000");
 					pos += 3; // 全角空格占用3个字节
