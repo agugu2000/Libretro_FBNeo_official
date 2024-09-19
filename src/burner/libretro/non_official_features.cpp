@@ -1027,7 +1027,15 @@ static SymbolMapping SymbolList[] = {
 	{ "_%", "△" }, { "@guard", "Ⓖ" }
 };
 
+static SymbolMapping SymbolList_ChineseAlignment[] = {
+	{ "═", "\uFF1D" },  // 全角等于号
+	{ "│", "\uFF5C" },  // 全角竖线
+	{ "  ", "\u3000" } // 全角空格
+	//{ " ", "\u2002" }   // 半角空格的替代（不间断空格）
+};
+
 static std::map<std::string, std::string> symbolMap;
+static std::map<std::string, std::string> symbolMap_ChineseAlignment;
 static void InitializeSymbolMap() {
 	int SymbolListSize = sizeof(SymbolList) / sizeof(SymbolList[0]);
 	for (int i = 0; i < SymbolListSize; ++i) {
@@ -1035,11 +1043,34 @@ static void InitializeSymbolMap() {
 	}
 }
 
+static void InitializeSymbolMap_ChineseAlignment() {
+	int SymbolListSize = sizeof(SymbolList_ChineseAlignment) / sizeof(SymbolList_ChineseAlignment[0]);
+	for (int i = 0; i < SymbolListSize; ++i) {
+		symbolMap_ChineseAlignment[SymbolList_ChineseAlignment[i].key] = SymbolList_ChineseAlignment[i].value;
+	}
+}
+
+// 根据symbolMap替换mame出招表的自定义符号
 static std::string ReplaceSymbols(const std::string& input) {
 	std::string result = input;
 	std::map<std::string, std::string>::iterator it;
 
 	for (it = symbolMap.begin(); it != symbolMap.end(); ++it) {
+		size_t pos = 0;
+		while ((pos = result.find(it->first, pos)) != std::string::npos) {
+			result.replace(pos, it->first.length(), it->second);
+			pos += it->second.length();
+		}
+	}
+	return result;
+}
+
+// 根据symbolMap_ChineseAlignment替换字符，以此尽可能保证图形攻略的对齐
+static std::string ReplaceSymbols_ChineseAlignment(const std::string& input) {
+	std::string result = input;
+	std::map<std::string, std::string>::iterator it;
+
+	for (it = symbolMap_ChineseAlignment.begin(); it != symbolMap_ChineseAlignment.end(); ++it) {
 		size_t pos = 0;
 		while ((pos = result.find(it->first, pos)) != std::string::npos) {
 			result.replace(pos, it->first.length(), it->second);
@@ -1169,31 +1200,11 @@ static bool ReadCommand_Dat() {
 		}
 	}
 
-	// 如果含有中文字符，则把双空格替换为全角空格,以此尽可能保证图形攻略的对齐
+	// 如果含有中文字符，则进行个别符号替换,以此尽可能保证图形攻略的对齐
 	if (containsChinese) {
+		InitializeSymbolMap_ChineseAlignment();
 		for (int i = 0; i < CommandDataLine.size(); ++i) {
-			for (int j = 0; j < CommandDataLine[i].size(); ++j) {
-				size_t pos = 0;
-				while ((pos = CommandDataLine[i].find("═", pos)) != std::string::npos) {
-					CommandDataLine[i].replace(pos, 3, "\uFF1D");
-					pos += 3; // 全角=号占用3个字节
-				}
-				pos = 0;
-				while ((pos = CommandDataLine[i].find("│", pos)) != std::string::npos) {
-					CommandDataLine[i].replace(pos, 3, "\uFF5C");
-					pos += 3; // 全角｜号占用3个字节
-				}
-				pos = 0;
-				while ((pos = CommandDataLine[i].find("  ", pos)) != std::string::npos) {
-					CommandDataLine[i].replace(pos, 2, "\u3000");
-					pos += 3; // 全角空格占用3个字节
-				}
-				pos = 0;
-				while ((pos = CommandDataLine[i].find(" ", pos)) != std::string::npos) {
-					CommandDataLine[i].replace(pos, 1, "\u2002");
-					pos += 3; // 半角空格也占用3个字节
-				}
-			}
+			CommandDataLine[i] = ReplaceSymbols_ChineseAlignment(CommandDataLine[i]);
 		}
 	}
 
