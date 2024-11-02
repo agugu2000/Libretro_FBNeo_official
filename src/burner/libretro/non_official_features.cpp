@@ -500,7 +500,7 @@ struct GameInp* AddMacroKeys(struct GameInp* pgi, int nPlayer, int nButtonsTwo[]
 /* 作弊码文件选择功能开始 */
 
 // 移植zipfn.cpp并将函数重命名，以便可以自由的选择读取zip和7z格式，而不改动官方源库
-// 全部三个函数zipopen、zipclose、zipgetlist都重命名加入SpecificType后缀
+// 全部三个函数zipopen、zipclose、zipgetlist、ZipLoadFile都重命名加入SpecificType后缀
 #include "burner.h"
 #include "unzip.h"
 
@@ -537,7 +537,11 @@ INT32 ZipOpenSpecificType(char* szZip) {
 		Zip = unzOpen(szFileName);
 		if (Zip != NULL) {
 			nFileType = ZIPFN_FILETYPE_ZIP;
-			unzGoToFirstFile(Zip);
+			if (unzGoToFirstFile(Zip) != UNZ_OK) {
+				unzClose(Zip);
+				Zip = NULL; // prevent double-free
+				return 1;
+			}
 			nCurrFile = 0;
 
 			return 0;
