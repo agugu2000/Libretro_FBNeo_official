@@ -59,13 +59,13 @@ override GIT_VERSION := "Modified by aGuGu on $(Current_Date)"
 CXXFLAGS += -DGIT_VERSION=\"$(GIT_VERSION)\"
 
 # TARGET
-ifeq ($(subset),)
+ifeq ($(SUBSET),)
 	TARGET_NAME := fbneo
-	INCLUDED_MAKEFILE = Makefile.common
+	INCLUDED_MAKEFILE = Makefile.all
 	SOURCES_CXX += $(LIBRETRO_DIR)/non_official_features.cpp
 else
-	TARGET_NAME := fbneo_$(subset)
-	INCLUDED_MAKEFILE = Makefile.$(subset)
+	TARGET_NAME := fbneo_$(SUBSET)
+	INCLUDED_MAKEFILE = Makefile.$(SUBSET)
 	SOURCES_CXX += $(LIBRETRO_DIR)/non_official_features.cpp
 endif
 
@@ -509,6 +509,7 @@ endif
 CC_SYSTEM = gcc
 CXX_SYSTEM = g++
 
+include Makefile.common
 include $(INCLUDED_MAKEFILE)
 
 FBNEO_CXXOBJ := $(SOURCES_CXX:.cpp=.o)
