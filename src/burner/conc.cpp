@@ -3,7 +3,7 @@
 #include <string>
 #include "non_official_features.h"
 
-#define HW_NES ( ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_NES) || ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_FDS) )
+#define HW_NES ( ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_SNES) || ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_NES) || ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_FDS) )
 static std::vector<char> CurrentMameCheatContent; // Global
 static std::vector<char> CurrentIniCheatContent; // Global
 static int usedCheatType = 0; //Global so we'll know if cheatload is already done or which cheat type it uses?
@@ -279,7 +279,7 @@ static INT32 ConfigParseFile(TCHAR* pszFilename, const std::vector<char>* iniCon
 							for (INT32 z = 0; z < strlen(t); z++) {
 #endif
 								char c = toupper((char)*s);
-								if (c >= 'A' && c <= 'Z' && newlen < 10)
+								if ( ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || (c == '-' || c == ':')) && newlen < 10)
 									pCurrentCheat->pOption[n]->AddressInfo[nCurrentAddress].szGenieCode[newlen++] = c;
 								s++;
 								if (*s == _T(',')) break;
