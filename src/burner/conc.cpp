@@ -3,7 +3,10 @@
 #include <string>
 #include "non_official_features.h"
 
-#define HW_NES ( ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_SNES) || ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_NES) || ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_FDS) )
+// GameGenie stuff is handled a little differently..
+#define HW_NES ( ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_NES) || ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_FDS) )
+#define HW_SNES ( ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_SNES) )
+#define HW_GGENIE ( HW_NES || HW_SNES )
 static std::vector<char> CurrentMameCheatContent; // Global
 static std::vector<char> CurrentIniCheatContent; // Global
 static int usedCheatType = 0; //Global so we'll know if cheatload is already done or which cheat type it uses?
@@ -270,7 +273,7 @@ static INT32 ConfigParseFile(TCHAR* pszFilename, const std::vector<char>* iniCon
 					INT32 nCPU = 0, nAddress = 0, nValue = 0;
 
 					if (SkipComma(&s)) {
-						if (HW_NES) {
+						if (HW_GGENIE) {
 							t = s;
 							INT32 newlen = 0;
 #if defined(BUILD_WIN32)
@@ -519,6 +522,13 @@ static INT32 ConfigParseMAMEFile_internal(const TCHAR *name)
 		nCurrentAddress++;	\
 	}	\
 
+#define AddressInfoGameGenie() { \
+		pCurrentCheat->pOption[n]->AddressInfo[nCurrentAddress].nTotalByte = 1;	\
+		pCurrentCheat->pOption[n]->AddressInfo[nCurrentAddress].nAddress = 0xffff; \
+		strcpy(pCurrentCheat->pOption[n]->AddressInfo[nCurrentAddress].szGenieCode, szGGenie); \
+		nCurrentAddress++;	\
+	}
+
 #define OptionName(a)	\
 	if (pCurrentCheat->pOption[n] == NULL) {						\
 		pCurrentCheat->pOption[n] = (CheatOption*)malloc(sizeof(CheatOption));		\
@@ -534,6 +544,7 @@ static INT32 ConfigParseMAMEFile_internal(const TCHAR *name)
 	TCHAR tmp2[256];
 	TCHAR gName[64];
 	TCHAR szLine[1024];
+	char szGGenie[128] = { 0, };
 
 	INT32 nLen;
 	INT32 n = 0;
@@ -609,8 +620,10 @@ static INT32 ConfigParseMAMEFile_internal(const TCHAR *name)
 		tmpcpy(2);						// cheat address
 #if defined(BUILD_WIN32)
 		_stscanf (tmp, _T("%x"), &nAddress);
+		strcpy(szGGenie, TCHARToANSI(tmp, NULL, 0));
 #else
 		sscanf (tmp, _T("%x"), &nAddress);
+		strcpy(szGGenie, tmp);
 #endif
 
 		tmpcpy(3);						// cheat value
@@ -639,7 +652,11 @@ static INT32 ConfigParseMAMEFile_internal(const TCHAR *name)
 
 		if ( flags & 0x00008000 || (flags & 0x00010000 && !menu)) { // Linked cheat "(2/2) etc.."
 			if (nCurrentAddress < CHEAT_MAX_ADDRESS) {
-				AddressInfo();
+				if (HW_GGENIE) {
+					AddressInfoGameGenie();
+				} else {
+					AddressInfo();
+				}
 			}
 
 			continue;
@@ -683,7 +700,7 @@ static INT32 ConfigParseMAMEFile_internal(const TCHAR *name)
 
 			OptionName(_T("Disabled"));
 
-			if (nAddress) {
+			if (nAddress || HW_GGENIE) {
 				if ((flags & 0x80018) == 0 && nAttrib != 0xffffffff) {
 					pCurrentCheat->bWriteWithMask = 1; // nAttrib field is the mask
 				}
@@ -721,12 +738,20 @@ static INT32 ConfigParseMAMEFile_internal(const TCHAR *name)
 						n++;
 						nCurrentAddress = 0;
 						OptionName(tmp2);
-						AddressInfo();
+						if (HW_GGENIE) {
+							AddressInfoGameGenie();
+						} else {
+							AddressInfo();
+						}
 					}
 				} else {
 					n++;
 					OptionName(tmp);
-					AddressInfo();
+					if (HW_GGENIE) {
+						AddressInfoGameGenie();
+					} else {
+						AddressInfo();
+					}
 				}
 			} else {
 				menu = 1;
@@ -762,7 +787,11 @@ static INT32 ConfigParseMAMEFile_internal(const TCHAR *name)
 			}
 
 			OptionName(tmp);
-			AddressInfo();
+			if (HW_GGENIE) {
+				AddressInfoGameGenie();
+			} else {
+				AddressInfo();
+			}
 
 			continue;
 		}
@@ -811,7 +840,13 @@ static INT32 ExtractMameCheatFromDat(FILE* MameDatCheat, const TCHAR* matchDrvNa
 static INT32 ConfigParseMAMEFile()
 {
 	TCHAR szFileName[MAX_PATH] = _T("");
-	_stprintf(szFileName, _T("%scheat.dat"), szAppCheatsPath);
+	if (HW_NES) {
+		_stprintf(szFileName, _T("%scheatnes.dat"), szAppCheatsPath);
+	} else if (HW_SNES) {
+		_stprintf(szFileName, _T("%scheatsnes.dat"), szAppCheatsPath);
+	} else {
+		_stprintf(szFileName, _T("%scheat.dat"), szAppCheatsPath);
+	}
 
 	FILE *fz = _tfopen(szFileName, _T("rt"));
 	INT32 ret = 1;
