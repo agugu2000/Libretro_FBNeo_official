@@ -109,6 +109,12 @@ INT32 CheatUpdate()
 
 		while (pCurrentCheat) {
 			if (pCurrentCheat->nStatus > 1) {
+                // [FIX] 防止 nCurrent 越界或 pOption[nCurrent] 为 NULL
+                if (pCurrentCheat->nCurrent < 0 || pCurrentCheat->nCurrent >= CHEAT_MAX_OPTIONS
+                    || pCurrentCheat->pOption[pCurrentCheat->nCurrent] == NULL) {
+                    pCurrentCheat = pCurrentCheat->pNext;
+                    continue;
+                }
 				pAddressInfo = pCurrentCheat->pOption[pCurrentCheat->nCurrent]->AddressInfo;
 				if (pAddressInfo->nAddress) {
 					bCheatsEnabled = true;
@@ -123,6 +129,12 @@ INT32 CheatUpdate()
 
 static void NESCheatDisable(CheatInfo* pCurrentCheat, INT32 nCheat)
 {
+    // [FIX] 防止 nCurrent 越界
+    if (pCurrentCheat->nCurrent < 0 || pCurrentCheat->nCurrent >= CHEAT_MAX_OPTIONS
+        || pCurrentCheat->pOption[pCurrentCheat->nCurrent] == NULL) {
+        return;
+    }
+
 	// Deactivate old option (if any)
 	CheatAddressInfo* pAddressInfo = pCurrentCheat->pOption[pCurrentCheat->nCurrent]->AddressInfo;
 
@@ -163,6 +175,12 @@ INT32 CheatEnable(INT32 nCheat, INT32 nOption) // -1 / 0 - disable
 				deactivate = 1;
 			}
 
+            // [FIX] 防止 nOption 越界或 pOption[nOption] 为 NULL
+            if (nOption < 0 || nOption >= CHEAT_MAX_OPTIONS
+                || pCurrentCheat->pOption[nOption] == NULL) {
+                return 1;
+            }
+
 			// Return OK if the cheat is already active with the same option
 			if (pCurrentCheat->nCurrent == nOption) {
 				return 0;
@@ -177,6 +195,12 @@ INT32 CheatEnable(INT32 nCheat, INT32 nOption) // -1 / 0 - disable
 			if (deactivate) { // disable cheat option
 				if (pCurrentCheat->nType != 1) {
 					nOption = pCurrentCheat->nCurrent; // Set to the first option as there is no addressinfo associated with default (disabled) cheat entry. -dink
+
+                    // [FIX] 防止 nCurrent（已赋给 nOption）越界
+                    if (nOption < 0 || nOption >= CHEAT_MAX_OPTIONS
+                        || pCurrentCheat->pOption[nOption] == NULL) {
+                        return 1;
+                    }
 
 					// Deactivate old option (if any)
 					pAddressInfo = pCurrentCheat->pOption[nOption]->AddressInfo;
@@ -335,6 +359,14 @@ INT32 CheatApply()
 	CheatAddressInfo* pAddressInfo;
 	while (pCurrentCheat) {
 		if (pCurrentCheat->nStatus > 1) {
+            // [FIX] 防止 nCurrent 越界或 pOption[nCurrent] 为 NULL
+            if (pCurrentCheat->nCurrent < 0 || pCurrentCheat->nCurrent >= CHEAT_MAX_OPTIONS
+                || pCurrentCheat->pOption[pCurrentCheat->nCurrent] == NULL) {
+                pCurrentCheat = pCurrentCheat->pNext;
+                nCurrentCheat++;
+                continue;
+            }
+
 			pAddressInfo = pCurrentCheat->pOption[pCurrentCheat->nCurrent]->AddressInfo;
 
 			while (pAddressInfo->nAddress) {
@@ -476,7 +508,7 @@ void CheatExit()
 	cheat_core_init_pointer = 0;
 
 	pCheatInfo = NULL;
-	
+
 	CheatSearchInitCallbackFunction = NULL;
 
 	nes_init_cheat_functions(NULL, NULL);
@@ -504,9 +536,9 @@ void CheatSearchExit()
 {
 	BurnFree(MemoryValues);
 	BurnFree(MemoryStatus);
-	
+
 	nMemorySize = 0;
-	
+
 	memset(CheatSearchShowResultAddresses, 0, sizeof(CheatSearchShowResultAddresses));
 	memset(CheatSearchShowResultValues, 0, sizeof(CheatSearchShowResultValues));
 }
@@ -514,7 +546,7 @@ void CheatSearchExit()
 int CheatSearchStart()
 {
 	UINT32 nAddress;
-	
+
 	INT32 nActiveCPU = 0;
 	cheat_ptr = &cpus[nActiveCPU];
 	cheat_subptr = cheat_ptr->cpuconfig;
@@ -535,16 +567,16 @@ int CheatSearchStart()
 
 	MemoryValues = (UINT8*)BurnMalloc(nMemorySize);
 	MemoryStatus = (UINT8*)BurnMalloc(nMemorySize);
-	
+
 	memset(MemoryStatus, IN_RESULTS, nMemorySize);
-	
+
 	if (CheatSearchInitCallbackFunction) CheatSearchInitCallbackFunction();
 
 	for (nAddress = 0; nAddress < nMemorySize; nAddress++) {
 		if (MemoryStatus[nAddress] == NOT_IN_RESULTS) continue;
 		MemoryValues[nAddress] = cheat_subptr->read(nAddress);
 	}
-	
+
 	cheat_subptr->close();
 
 	if (nActiveCPU >= 0) {
@@ -559,11 +591,11 @@ static void CheatSearchGetResults()
 {
 	UINT32 nAddress;
 	UINT32 nResultsPos = 0;
-	
+
 	memset(CheatSearchShowResultAddresses, 0, sizeof(CheatSearchShowResultAddresses));
 	memset(CheatSearchShowResultValues, 0, sizeof(CheatSearchShowResultValues));
 
-	for (nAddress = 0; nAddress < nMemorySize; nAddress++) {		
+	for (nAddress = 0; nAddress < nMemorySize; nAddress++) {
 		if (MemoryStatus[nAddress] == IN_RESULTS) {
 			CheatSearchShowResultAddresses[nResultsPos] = nAddress;
 			CheatSearchShowResultValues[nResultsPos] = MemoryValues[nAddress];
@@ -576,13 +608,13 @@ UINT32 CheatSearchValueNoChange()
 {
 	UINT32 nMatchedAddresses = 0;
 	UINT32 nAddress;
-	
+
 	INT32 nActiveCPU = 0;
-	
+
 	nActiveCPU = cheat_subptr->active();
 	if (nActiveCPU >= 0) cheat_subptr->close();
 	cheat_subptr->open(0);
-	
+
 	for (nAddress = 0; nAddress < nMemorySize; nAddress++) {
 		if (MemoryStatus[nAddress] == NOT_IN_RESULTS) continue;
 		if (cheat_subptr->read(nAddress) == MemoryValues[nAddress]) {
@@ -595,9 +627,9 @@ UINT32 CheatSearchValueNoChange()
 
 	cheat_subptr->close();
 	if (nActiveCPU >= 0) cheat_subptr->open(nActiveCPU);
-	
+
 	if (nMatchedAddresses <= CHEATSEARCH_SHOWRESULTS) CheatSearchGetResults();
-	
+
 	return nMatchedAddresses;
 }
 
@@ -605,13 +637,13 @@ UINT32 CheatSearchValueChange()
 {
 	UINT32 nMatchedAddresses = 0;
 	UINT32 nAddress;
-	
+
 	INT32 nActiveCPU = 0;
-	
+
 	nActiveCPU = cheat_subptr->active();
 	if (nActiveCPU >= 0) cheat_subptr->close();
 	cheat_subptr->open(0);
-	
+
 	for (nAddress = 0; nAddress < nMemorySize; nAddress++) {
 		if (MemoryStatus[nAddress] == NOT_IN_RESULTS) continue;
 		if (cheat_subptr->read(nAddress) != MemoryValues[nAddress]) {
@@ -621,12 +653,12 @@ UINT32 CheatSearchValueChange()
 			MemoryStatus[nAddress] = NOT_IN_RESULTS;
 		}
 	}
-	
+
 	cheat_subptr->close();
 	if (nActiveCPU >= 0) cheat_subptr->open(nActiveCPU);
-	
+
 	if (nMatchedAddresses <= CHEATSEARCH_SHOWRESULTS) CheatSearchGetResults();
-	
+
 	return nMatchedAddresses;
 }
 
@@ -634,9 +666,9 @@ UINT32 CheatSearchValueDecreased()
 {
 	UINT32 nMatchedAddresses = 0;
 	UINT32 nAddress;
-	
+
 	INT32 nActiveCPU = 0;
-	
+
 	nActiveCPU = cheat_subptr->active();
 	if (nActiveCPU >= 0) cheat_subptr->close();
 	cheat_subptr->open(0);
@@ -653,9 +685,9 @@ UINT32 CheatSearchValueDecreased()
 
 	cheat_subptr->close();
 	if (nActiveCPU >= 0) cheat_subptr->open(nActiveCPU);
-	
+
 	if (nMatchedAddresses <= CHEATSEARCH_SHOWRESULTS) CheatSearchGetResults();
-	
+
 	return nMatchedAddresses;
 }
 
@@ -663,9 +695,9 @@ UINT32 CheatSearchValueIncreased()
 {
 	UINT32 nMatchedAddresses = 0;
 	UINT32 nAddress;
-	
+
 	INT32 nActiveCPU = 0;
-	
+
 	nActiveCPU = cheat_subptr->active();
 	if (nActiveCPU >= 0) cheat_subptr->close();
 	cheat_subptr->open(0);
@@ -679,12 +711,12 @@ UINT32 CheatSearchValueIncreased()
 			MemoryStatus[nAddress] = NOT_IN_RESULTS;
 		}
 	}
-	
+
 	cheat_subptr->close();
 	if (nActiveCPU >= 0) cheat_subptr->open(nActiveCPU);
-	
+
 	if (nMatchedAddresses <= CHEATSEARCH_SHOWRESULTS) CheatSearchGetResults();
-	
+
 	return nMatchedAddresses;
 }
 
@@ -692,17 +724,17 @@ void CheatSearchDumptoFile()
 {
 	FILE *fp = fopen("cheatsearchdump.txt", "wt");
 	UINT32 nAddress;
-	
+
 	if (fp) {
 		char Temp[256];
-		
+
 		for (nAddress = 0; nAddress < nMemorySize; nAddress++) {
 			if (MemoryStatus[nAddress] == IN_RESULTS) {
 				sprintf(Temp, "Address %08X Value %02X\n", nAddress, MemoryValues[nAddress]);
 				fwrite(Temp, 1, strlen(Temp), fp);
 			}
 		}
-		
+
 		fclose(fp);
 	}
 }

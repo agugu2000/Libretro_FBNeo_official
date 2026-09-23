@@ -265,6 +265,13 @@ extern TCHAR szAppIpsesPath[MAX_PATH];
 extern TCHAR szAppRomdatasPath[MAX_PATH];
 extern UINT32 nDiagInputHoldCounter;
 extern int bDrvOkay;
+extern bool bIsPgmCartGame;
+extern bool bIsPgm2CartGame;
+extern bool bIsCps1CartGame;
+extern bool bAllowIgnoreCrc;
+extern TCHAR szAppCommandPath[MAX_PATH];
+extern struct retro_core_option_v2_definition* option_defs_us;
+
 
 char* str_char_replace(char* destination, char c_find, char c_replace);
 void set_neo_system_bios();

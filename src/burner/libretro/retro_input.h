@@ -63,5 +63,9 @@ void InputInit();
 void InputExit();
 void SetDefaultDeviceTypes();
 void SetControllerInfo();
+// [NON-OFFICIAL HACK]
+void SetReSetControllers();
+extern bool bStreetFighterLayout;
+extern bool bIsCps1TraditionCartGame;
 
 #endif

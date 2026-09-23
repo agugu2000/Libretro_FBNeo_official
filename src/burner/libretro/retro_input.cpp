@@ -2,6 +2,8 @@
 #include "retro_common.h"
 #include "retro_input.h"
 #include "burn_gun.h"
+// [NON-OFFICIAL HACK]
+#include "non_official_features.h"
 
 // TODO :
 // - implement RETROPAD_8PANEL for 8-buttons panels/fightsticks
@@ -14,6 +16,8 @@ INT32  nAnalogSpeed = 0x0100;
 INT32  nFireButtons = 0;
 INT32  nRealFireButtons = 0;
 bool   bStreetFighterLayout = false;
+// [NON-OFFICIAL HACK]
+bool   bIsCps1TraditionCartGame = false;
 
 // extern from burnint.h
 INT32 nInputIntfMouseDivider = 1;
@@ -131,14 +135,23 @@ static void AnalyzeGameLayout()
 	INT32 nKickInputs[MAX_PLAYERS][3];
 	INT32 nNeogeoButtons[MAX_PLAYERS][4];
 	INT32 nMiscButtons[MAX_PLAYERS][4];
+	// [NON-OFFICIAL HACK]
+	INT32 nCps1Tradition[MAX_PLAYERS] = {0, };
+	INT32 nPgmButtons[MAX_PLAYERS][4];
+	INT32 nCps1Buttons[MAX_PLAYERS][2];
 
 	bStreetFighterLayout = false;
+	// [NON-OFFICIAL HACK]
+	bIsCps1TraditionCartGame = false;
 	nMahjongKeyboards = 0;
 	bVolumeIsFireButton = false;
 	nFireButtons = 0;
 	nMacroCount = 0;
 	memset(&nNeogeoButtons, 0, sizeof(nNeogeoButtons));
 	memset(&nMiscButtons, 0, sizeof(nMiscButtons));
+	// [NON-OFFICIAL HACK]
+	memset(&nPgmButtons, 0, sizeof(nPgmButtons));
+	memset(&nCps1Buttons, 0, sizeof(nCps1Buttons));
 	memset(&nPerPlayerAxises, 0, sizeof(nPerPlayerAxises));
 
 	for (UINT32 i = 0; i < nGameInpCount; i++) {
@@ -228,6 +241,17 @@ static void AnalyzeGameLayout()
 			if ((_stricmp(" Button 4", bii.szName + 2) == 0) || (_stricmp(" fire 4", bii.szInfo + 2) == 0)) {
 				nMiscButtons[nPlayer][3] = i;
 			}
+
+			// [NON-OFFICIAL HACK]
+			if (bIsNeogeoCartGame || (nGameType == RETRO_GAME_TYPE_NEOCD)) {
+				AssignButtons("neogeo", bii.szName, bii.szInfo, nPlayer, i, nNeogeoButtons);
+			}
+			if (bIsPgmCartGame || bIsPgm2CartGame) {
+				AssignButtons("pgm", bii.szName, bii.szInfo, nPlayer, i, nPgmButtons);
+			}
+			if (bIsCps1CartGame) {
+				AssignButtons("cps1", bii.szName, bii.szInfo, nPlayer, i, nCps1Buttons, nCps1Tradition);
+			}
 		}
 	}
 
@@ -236,7 +260,7 @@ static void AnalyzeGameLayout()
 
 	// We only support macros deemed "most useful" for now
 	for (UINT32 nPlayer = 0; nPlayer < nMaxPlayers; nPlayer++) {
-		if (nPunchx3[nPlayer] == 7) {		// Create a 3x punch macro
+		if (nPunchx3[nPlayer] == 7 && !bUseCustomMacroOnly) {		// Create a 3x punch macro
 			pgi->nInput = GIT_MACRO_AUTO;
 			pgi->nType = BIT_DIGITAL;
 
@@ -250,7 +274,7 @@ static void AnalyzeGameLayout()
 			nMacroCount++;
 			pgi++;
 		}
-		if (nKickx3[nPlayer] == 7) {		// Create a 3x kick macro
+		if (nKickx3[nPlayer] == 7 && !bUseCustomMacroOnly) {		// Create a 3x kick macro
 			pgi->nInput = GIT_MACRO_AUTO;
 			pgi->nType = BIT_DIGITAL;
 
@@ -265,7 +289,7 @@ static void AnalyzeGameLayout()
 			pgi++;
 		}
 		// supposedly, those are the 4 most useful neogeo macros
-		if (HW_NEOGEO) {
+		if (HW_NEOGEO && !bUseCustomMacroOnly) {
 			pgi->nInput = GIT_MACRO_AUTO;
 			pgi->nType = BIT_DIGITAL;
 			pgi->Macro.nMode = 0;
@@ -388,6 +412,19 @@ static void AnalyzeGameLayout()
 			}
 		}
 #endif
+		// [NON-OFFICIAL HACK] Create custom macro nodes
+		if ((nPunchx3[nPlayer] == 7) && (nKickx3[nPlayer] == 7)) {
+			pgi = AddMacroKeys(pgi, nPlayer, NULL, NULL, nPunchInputs, nKickInputs, "streetfighter", nMacroCount);
+		}
+		if (bIsNeogeoCartGame || (nGameType == RETRO_GAME_TYPE_NEOCD)) {
+			pgi = AddMacroKeys(pgi, nPlayer, NULL, nNeogeoButtons, NULL, NULL, "neogeo", nMacroCount);
+		}
+		if (bIsPgmCartGame || bIsPgm2CartGame) {
+			pgi = AddMacroKeys(pgi, nPlayer, NULL, nPgmButtons, NULL, NULL, "pgm", nMacroCount);
+		}
+		if (nCps1Tradition[0] == 3) {
+			pgi = AddMacroKeys(pgi, nPlayer, nCps1Buttons, NULL, NULL, NULL, "cps1", nMacroCount);
+		}
 	}
 
 	if ((nPunchx3[0] == 7) && (nKickx3[0] == 7)) {
@@ -395,6 +432,10 @@ static void AnalyzeGameLayout()
 	}
 	if (nRealFireButtons >= 5 && (BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_CAPCOM_CPS2) {
 		bStreetFighterLayout = true;
+	}
+	// [NON-OFFICIAL HACK] CPS1 traditional layout requires both Attack and Jump
+	if (nCps1Tradition[0] == 3) {
+		bIsCps1TraditionCartGame = true;
 	}
 }
 
@@ -405,7 +446,8 @@ INT32 GameInpInit()
 	nMacroCount = 0;
 
 	// We only support up to 4 macros for now
-	nMaxMacro = nMaxPlayers * 4;
+	// [NON-OFFICIAL HACK] Raised to 60 to accommodate custom macro system
+	nMaxMacro = nMaxPlayers * 60;
 
 	while (BurnDrvGetInputInfo(NULL,nGameInpCount) == 0)
 		nGameInpCount++;
@@ -685,7 +727,8 @@ static INT32 GameInpAnalog2RetroInpAnalog(struct GameInp* pgi, unsigned port, un
 }
 
 // Digital to digital mapping
-static INT32 GameInpDigital2RetroInpKey(struct GameInp* pgi, unsigned port, unsigned id, char *szn, unsigned device = RETRO_DEVICE_JOYPAD, unsigned nInput = GIT_SWITCH)
+// [NON-OFFICIAL HACK] Changed from static to extern so BindCustomMacroKeys can call it
+extern INT32 GameInpDigital2RetroInpKey(struct GameInp* pgi, unsigned port, unsigned id, char *szn, unsigned device = RETRO_DEVICE_JOYPAD, unsigned nInput = GIT_SWITCH)
 {
 	if (bButtonMapped || pgi->nType != BIT_DIGITAL) return 0;
 	pgi->nInput = nInput;
@@ -2116,12 +2159,17 @@ static INT32 GameInpSpecialOne(struct GameInp* pgi, INT32 nPlayer, char* szb, ch
 	}
 
 	if (bStreetFighterLayout) {
-		if (strncmp("Buttons 3x Punch", description, 16) == 0)
-			GameInpDigital2RetroInpKey(pgi, nPlayer, RETRO_DEVICE_ID_4TH_COL_TOP, description, RETRO_DEVICE_JOYPAD, GIT_MACRO_AUTO);
-		if (strncmp("Buttons 3x Kick", description, 15) == 0)
-			GameInpDigital2RetroInpKey(pgi, nPlayer, RETRO_DEVICE_ID_4TH_COL_BOTTOM, description, RETRO_DEVICE_JOYPAD, GIT_MACRO_AUTO);
+		// [NON-OFFICIAL HACK] Skip official hardcoded 3x macros when using custom macro system
+		if (!bUseCustomMacroOnly) {
+			if (strncmp("Buttons 3x Punch", description, 16) == 0)
+				GameInpDigital2RetroInpKey(pgi, nPlayer, RETRO_DEVICE_ID_4TH_COL_TOP, description, RETRO_DEVICE_JOYPAD, GIT_MACRO_AUTO);
+			if (strncmp("Buttons 3x Kick", description, 15) == 0)
+				GameInpDigital2RetroInpKey(pgi, nPlayer, RETRO_DEVICE_ID_4TH_COL_BOTTOM, description, RETRO_DEVICE_JOYPAD, GIT_MACRO_AUTO);
+		}
+		// [NON-OFFICIAL HACK] Custom macro binding
+		BindCustomMacroKeys(LoadCustomMacroKeys("streetfighter"), description, nPlayer, nDeviceType, pgi);
 	}
-	if (HW_NEOGEO) {
+	if (HW_NEOGEO && !bUseCustomMacroOnly) {
 		if (strncmp("Buttons ABC", description, 11) == 0)
 			GameInpDigital2RetroInpKey(pgi, nPlayer, RETRO_DEVICE_ID_FIRE07, description, RETRO_DEVICE_JOYPAD, GIT_MACRO_AUTO);
 		if (strncmp("Buttons BCD", description, 11) == 0)
@@ -2130,6 +2178,16 @@ static INT32 GameInpSpecialOne(struct GameInp* pgi, INT32 nPlayer, char* szb, ch
 			GameInpDigital2RetroInpKey(pgi, nPlayer, RETRO_DEVICE_ID_FIRE05, description, RETRO_DEVICE_JOYPAD, GIT_MACRO_AUTO);
 		if (strncmp("Buttons CD", description, 10) == 0)
 			GameInpDigital2RetroInpKey(pgi, nPlayer, RETRO_DEVICE_ID_FIRE06, description, RETRO_DEVICE_JOYPAD, GIT_MACRO_AUTO);
+	}
+	// [NON-OFFICIAL HACK] Custom macro binding for Neo-Geo / PGM / CPS1
+	if (bIsNeogeoCartGame || (nGameType == RETRO_GAME_TYPE_NEOCD)) {
+		BindCustomMacroKeys(LoadCustomMacroKeys("neogeo"), description, nPlayer, nDeviceType, pgi);
+	}
+	if (bIsPgmCartGame || bIsPgm2CartGame) {
+		BindCustomMacroKeys(LoadCustomMacroKeys("pgm"), description, nPlayer, nDeviceType, pgi);
+	}
+	if (bIsCps1TraditionCartGame) {
+		BindCustomMacroKeys(LoadCustomMacroKeys("cps1"), description, nPlayer, nDeviceType, pgi);
 	}
 #if ENABLE_2_AND_3_BUTTONS_MACROS
 	// This code will assign macros to the next unmapped retropad buttons based on order preference from the device type
@@ -3340,17 +3398,17 @@ void debuginputs()
 {
 	// keys debug
 	struct GameInp *pgi2zz = GameInp;
- 
+
 	for (int i = 0; i < nGameInpCount; i++, pgi2zz++) {
- 
+
 		if (pgi2zz->Input.pVal == NULL) {
 			continue;
 		}
- 
+
 		struct BurnInputInfo bii;
 		memset(&bii, 0, sizeof(bii));
 		BurnDrvGetInputInfo(&bii, i);
- 
+
 		bprintf(0, _T("name %S  val %x \n"), bii.szName, *(pgi2zz->Input.pVal));
 	}
 }
@@ -3613,4 +3671,10 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
 		if (bControllersSetOnce)
 			RefreshControllers();
 	}
+}
+
+// [NON-OFFICIAL HACK]
+void SetReSetControllers() {
+	bControllersNeedRefresh = true;
+	bControllersSetOnce = false;
 }

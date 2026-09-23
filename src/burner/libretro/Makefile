@@ -31,6 +31,18 @@ BACKSLASH := \$(BACKSLASH)
 filter_out1 = $(filter-out $(firstword $1),$1)
 filter_out2 = $(call filter_out1,$(call filter_out1,$1))
 
+ifeq ($(platform), aarch64)
+  CC        = aarch64-linux-gnu-gcc
+  CXX       = aarch64-linux-gnu-g++
+  ARCH      = arm64
+  COMMON_FLAGS += -march=armv8-a -mtune=cortex-a53
+  CFLAGS    = -std=gnu99 $(COMMON_FLAGS)
+  CXXFLAGS  = -std=c++11 $(COMMON_FLAGS)
+  HAVE_NEON = 0
+  USE_CYCLONE = 0
+  override platform += unix
+endif
+
 # system platform
 ifeq ($(platform),)
 	platform = unix
@@ -60,14 +72,18 @@ endif
 
 MAIN_FBNEO_DIR	:= ../..
 VERSION_SCRIPT	:= $(MAIN_FBNEO_DIR)/burner/libretro/link.T
+override GIT_VERSION := " [Modified by aGuGu]"
+CXXFLAGS += -DGIT_VERSION=\"$(GIT_VERSION)\"
 
 # TARGET
 ifeq ($(SUBSET),)
-	TARGET_NAME := fbneo
+	TARGET_NAME := fbneo_advanced
 	INCLUDED_MAKEFILE = Makefile.all
+	SOURCES_CXX += $(LIBRETRO_DIR)/non_official_features.cpp
 else
 	TARGET_NAME := fbneo_$(SUBSET)
 	INCLUDED_MAKEFILE = Makefile.$(SUBSET)
+	SOURCES_CXX += $(LIBRETRO_DIR)/non_official_features.cpp
 endif
 
 # Unix
@@ -343,8 +359,8 @@ else ifeq ($(platform), funkey)
 # Platform affix = classic_<ISA>_<µARCH>
 # Help at https://modmyclassic.com/comp
 
-# (armv7 a7, hard point, neon based) ### 
-# NESC, SNESC, C64 mini 
+# (armv7 a7, hard point, neon based) ###
+# NESC, SNESC, C64 mini
 else ifeq ($(platform), classic_armv7_a7)
 	TARGET := $(TARGET_NAME)_libretro.so
 	fpic := -fPIC
@@ -556,7 +572,7 @@ endif
 
 ifeq ($(FASTMATH), 1)
 	ifeq (,$(findstring msvc,$(platform)))
-		# 2019-06-26 : 
+		# 2019-06-26 :
 		# we got some evidence that -ffast-math is actually not safe for fbneo
 		# adding -frounding-math to fix arithmetic in neogeo_run.cpp, it might fix other stuff
 		# clang might need a minimum version for -frounding-math support

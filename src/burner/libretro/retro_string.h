@@ -1,6 +1,8 @@
 #ifndef __RETRO_STRING__
 #define __RETRO_STRING__
 
+// [NON-OFFICIAL HACK] Added MAX_LANGUAGES for non-official localized strings
+#define MAX_LANGUAGES	3
 #define NUM_STRING	171
 
 extern const char* pSelLangStr[NUM_STRING];

@@ -1,5 +1,7 @@
 #include "retro_common.h"
 #include "retro_input.h"
+// [NON-OFFICIAL HACK]
+#include "non_official_features.h"
 #ifdef BUILD_PGM2
 #include "retro_pgm2_cards.h"
 #endif
@@ -17,7 +19,7 @@ struct RomBiosInfo neogeo_bioses[] = {
 	{"sp-u2.sp1",         0xe72943de, 0x03, "MVS USA ver. 5 (2 slot)"        , NEOGEO_MVS | NEOGEO_USA, 0 },
 	{"sp1-u2",            0x62f021f4, 0x04, "MVS USA ver. 5 (4 slot)"        , NEOGEO_MVS | NEOGEO_USA, 0 },
 	{"sp-e.sp1",          0x2723a5b5, 0x05, "MVS USA ver. 5 (6 slot)"        , NEOGEO_MVS | NEOGEO_USA, 0 },
-	{"sp1-u4.bin",        0x1179a30f, 0x06, "MVS USA (U4)"                   , NEOGEO_MVS | NEOGEO_USA, 0 }, 
+	{"sp1-u4.bin",        0x1179a30f, 0x06, "MVS USA (U4)"                   , NEOGEO_MVS | NEOGEO_USA, 0 },
 	{"sp1-u3.bin",        0x2025b7a2, 0x07, "MVS USA (U3)"                   , NEOGEO_MVS | NEOGEO_USA, 0 },
 	{"vs-bios.rom",       0xf0e8f27d, 0x08, "MVS Japan ver. 6 (? slot)"      , NEOGEO_MVS | NEOGEO_JAP, 0 },
 	{"sp-j2.sp1",         0xacede59C, 0x09, "MVS Japan ver. 5 (? slot)"      , NEOGEO_MVS | NEOGEO_JAP, 0 },
@@ -56,6 +58,10 @@ bool bIsNeogeoCartGame                = false;
 bool allow_neogeo_mode                = true;
 bool neogeo_use_specific_default_bios = false;
 #endif
+bool bIsPgmCartGame                   = false;
+bool bIsPgm2CartGame                  = false;
+bool bIsCps1CartGame                  = false;
+bool bAllowIgnoreCrc                  = false;
 bool bAllowDepth32                    = false;
 bool bPatchedRomsetsEnabled           = true;
 bool bLibretroSupportsAudioBuffStatus = false;
@@ -277,6 +283,21 @@ static struct retro_core_option_v2_definition var_fbneo_allow_patched_romsets = 
 	},
 	"enabled"
 };
+// [NON-OFFICIAL HACK]
+static struct retro_core_option_v2_definition var_fbneo_allow_ignore_crc = {
+	"fbneo-allow-ignore-crc",
+	"Allow Ignore CRC",
+	NULL,
+	"The prerequisite is to enable 'Allow patched romsets'. Allowing rom with the correct file name and file size to run by ignoring CRC check. \nNote:By ignoring the CRC check, the game content loaded may not align with the intended game content",
+	NULL,
+	NULL,
+	{
+		{ "disabled", NULL },
+		{ "enabled",  NULL },
+		{ NULL,       NULL },
+	},
+	"disabled"
+};
 static struct retro_core_option_v2_definition var_fbneo_samplerate = {
 	"fbneo-samplerate",
 	"Samplerate",
@@ -346,7 +367,7 @@ static struct retro_core_option_v2_definition var_fbneo_analog_speed = {
 	},
 	"100%"
 };
-// note : socd is made global for all users, standalone is handling different modes for each user but we really don't want this here... 
+// note : socd is made global for all users, standalone is handling different modes for each user but we really don't want this here...
 //        libretro doesn't really support multiple keyboard users and this setting is mostly (only ?) useful for keyboard users...
 static struct retro_core_option_v2_definition var_fbneo_socd = {
 	"fbneo-socd",
@@ -935,16 +956,29 @@ void evaluate_neogeo_bios_mode(const char* drvname)
 }
 #endif
 
+// [NON-OFFICIAL HACK]
+struct retro_core_option_v2_definition* option_defs_us;
+
 void set_environment()
 {
 	std::vector<const retro_core_option_v2_definition*> vars_systems;
-	struct retro_core_option_v2_definition *option_defs_us;
 	struct retro_vfs_interface_info vfs_iface_info;
+
+	// [NON-OFFICIAL HACK] free previous allocation (if any) before reallocating
+	if (option_defs_us) {
+		free(option_defs_us);
+		option_defs_us = NULL;
+	}
 
 	// Add the uncategorized core options
 	var_fbneo_allow_patched_romsets.desc                   = RETRO_PATCHED_CAT_DESC;
 	var_fbneo_allow_patched_romsets.info                   = RETRO_PATCHED_CAT_INFO;
 	vars_systems.push_back(&var_fbneo_allow_patched_romsets);
+
+	// [NON-OFFICIAL HACK]
+	var_fbneo_allow_ignore_crc.desc                        = RETRO_IGNORE_CRC_DESC;
+	var_fbneo_allow_ignore_crc.info                        = RETRO_IGNORE_CRC_INFO;
+	vars_systems.push_back(&var_fbneo_allow_ignore_crc);
 
 	var_fbneo_cpu_speed_adjust.desc                        = RETRO_CPUSPEED_CAT_DESC;
 	var_fbneo_cpu_speed_adjust.info                        = RETRO_CPUSPEED_CAT_INFO;
@@ -1218,12 +1252,16 @@ void set_environment()
 	int nbr_cheats   = cheat_core_options.size();
 	int nbr_ipses    = ips_core_options.size();
 	int nbr_romdatas = romdata_core_options.size();
+	// [NON-OFFICIAL HACK]
+	int nbr_macros = get_macro_count();
+	int nbr_command_dat = get_command_dat_count();
 
 #if 0
 	log_cb(RETRO_LOG_INFO, "set_environment: SYSTEM: %d, DIPSWITCH: %d\n", nbr_vars, nbr_dips);
 #endif
 
-	option_defs_us = (struct retro_core_option_v2_definition*)calloc(nbr_vars + nbr_dips + nbr_cheats + nbr_ipses + nbr_romdatas + 1, sizeof(struct retro_core_option_v2_definition));
+	// [NON-OFFICIAL HACK] nbr_macros + nbr_command_dat added
+	option_defs_us = (struct retro_core_option_v2_definition*)calloc(nbr_vars + nbr_dips + nbr_cheats + nbr_ipses + nbr_romdatas + nbr_macros + nbr_command_dat + 1, sizeof(struct retro_core_option_v2_definition));
 
 	int idx_var = 0;
 
@@ -1241,6 +1279,39 @@ void set_environment()
 		option_defs_us[idx_var].desc             = dipswitch_core_options[dip_idx].friendly_name.c_str();
 		option_defs_us[idx_var].desc_categorized = dipswitch_core_options[dip_idx].friendly_name_categorized.c_str();
 		option_defs_us[idx_var].default_value    = dipswitch_core_options[dip_idx].default_bdi.szText;
+
+		// [NON-OFFICIAL HACK] Prefer China > Taiwan > Hong Kong as default region
+		{
+			std::string friendly_name_lower = dipswitch_core_options[dip_idx].friendly_name;
+			std::transform(friendly_name_lower.begin(), friendly_name_lower.end(), friendly_name_lower.begin(), ::tolower);
+
+			if (friendly_name_lower.find("region") != std::string::npos) {
+				int highest_priority = -1;
+
+				for (int dip_value_idx = 0; dip_value_idx < dipswitch_core_options[dip_idx].values.size(); dip_value_idx++) {
+					std::string value_lower = dipswitch_core_options[dip_idx].values[dip_value_idx].friendly_name;
+					std::transform(value_lower.begin(), value_lower.end(), value_lower.begin(), ::tolower);
+					int priority = -1;
+					bool reset_default = false;
+
+					if (value_lower == "china") {
+						priority = 2;
+					} else if (value_lower == "taiwan") {
+						priority = 1;
+					} else if (value_lower == "hong kong") {
+						priority = 0;
+					}
+					if (priority > highest_priority) {
+						reset_default = true;
+						highest_priority = priority;
+					}
+					if (reset_default) {
+						option_defs_us[idx_var].default_value = dipswitch_core_options[dip_idx].values[dip_value_idx].friendly_name.c_str();
+					}
+				}
+			}
+		}
+
 #ifdef BUILD_NEOGEO
 		// Instead of filtering out the dips, make the description a warning if it's a neogeo game using a different default bios
 		if (neogeo_use_specific_default_bios && bIsNeogeoCartGame && dipswitch_core_options[dip_idx].friendly_name.compare("[Dipswitch] BIOS") == 0)
@@ -1302,6 +1373,21 @@ void set_environment()
 		idx_var++;
 	}
 
+	// [NON-OFFICIAL HACK] Add macro options and command.dat options
+	if (bIsNeogeoCartGame || (nGameType == RETRO_GAME_TYPE_NEOCD)) {
+		idx_var = AddMacroOptions("neogeo", nbr_macros, idx_var);
+	}
+	if (bIsPgmCartGame || bIsPgm2CartGame) {
+		idx_var = AddMacroOptions("pgm", nbr_macros, idx_var);
+	}
+	if (bIsCps1TraditionCartGame) {
+		idx_var = AddMacroOptions("cps1", nbr_macros, idx_var);
+	}
+	if (bStreetFighterLayout) {
+		idx_var = AddMacroOptions("streetfighter", nbr_macros, idx_var);
+	}
+	idx_var = AddCommandDatOptions(idx_var);
+
 	option_defs_us[idx_var] = var_empty;
 
 	static struct retro_core_option_v2_category option_cats_us[] =
@@ -1352,6 +1438,32 @@ void set_environment()
 			"romdata",
 			"RomData",
 			RETRO_ROMDATA_CAT_INFO
+		},
+		// [NON-OFFICIAL HACK]
+		{
+			"neogeo_macro",
+			neogeo_macro_desc,
+			macro_info_general
+		},
+		{
+			"pgm_macro",
+			pgm_macro_desc,
+			macro_info_general
+		},
+		{
+			"cps1_macro",
+			cps1_macro_desc,
+			macro_info_general
+		},
+		{
+			"streetfighter_macro",
+			streetfighter_macro_desc,
+			macro_info_general
+		},
+		{
+			"command_dat",
+			RETRO_COMMAND_DAT_CAT_DESC,
+			RETRO_COMMAND_DAT_CAT_INFO
 		},
 #ifdef BUILD_PGM2
 		{
@@ -1929,6 +2041,16 @@ void check_variables(void)
 			bPatchedRomsetsEnabled = true;
 		else
 			bPatchedRomsetsEnabled = false;
+	}
+
+	// [NON-OFFICIAL HACK]
+	var.key = var_fbneo_allow_ignore_crc.key;
+	if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+	{
+		if (strcmp(var.value, "enabled") == 0)
+			bAllowIgnoreCrc = true;
+		else
+			bAllowIgnoreCrc = false;
 	}
 
 	if (nGameType != RETRO_GAME_TYPE_NEOCD && nGameType != RETRO_GAME_TYPE_PCECD)

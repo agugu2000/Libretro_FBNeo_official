@@ -12,6 +12,8 @@
 #include "retro_input.h"
 #include "retro_memory.h"
 #include "ugui_tools.h"
+// [NON-OFFICIAL HACK]
+#include "non_official_features.h"
 #ifdef BUILD_PGM2
 #include "retro_pgm2_cards.h"
 #endif
@@ -143,6 +145,8 @@ TCHAR szAppHDDPath[MAX_PATH];
 TCHAR szAppCheatsPath[MAX_PATH];
 TCHAR szAppIpsesPath[MAX_PATH];
 TCHAR szAppRomdatasPath[MAX_PATH];
+// [NON-OFFICIAL HACK]
+TCHAR szAppCommandPath[MAX_PATH];
 TCHAR szAppPathDefPath[MAX_PATH];
 TCHAR szAppSnesMsu1Path[MAX_PATH];
 TCHAR szAppBurnVer[16];
@@ -436,7 +440,8 @@ extern unsigned int (__cdecl *BurnHighCol) (signed int r, signed int g, signed i
 
 void retro_get_system_info(struct retro_system_info *info)
 {
-	char *library_version = (char*)calloc(38, sizeof(char));
+	// [NON-OFFICIAL HACK] 256 bytes to accommodate custom version string
+	char *library_version = (char*)calloc(256, sizeof(char));
 
 #ifndef GIT_DATE
 #define GIT_DATE ""
@@ -1029,6 +1034,8 @@ static bool open_archive()
 					if (index < 0)
 					{
 						if ((g_find_list_path[z].ignoreCrc && bPatchedRomsetsEnabled) ||
+							// [NON-OFFICIAL HACK]
+							(bAllowIgnoreCrc && bPatchedRomsetsEnabled) ||
 							((NULL != pDataRomDesc) && (-1 != pRDI->nDescCount)))					// In romdata mode
 						{
 							index = find_rom_by_name(rom_name, list, count, &real_rom_crc);
@@ -1342,6 +1349,9 @@ void retro_reset()
 	}
 #endif
 
+	// [NON-OFFICIAL HACK]
+	SetReSetControllers();
+
 	// romdata & ips patches run!
 	if ((nIndex >= 0) || (nPatches > 0))
 	{
@@ -1351,7 +1361,7 @@ void retro_reset()
 		if (nIndex >= 0) RomDataInit();
 
 		retro_load_game_common();
-	} 
+	}
 }
 
 static void VideoBufferInit()
@@ -1385,7 +1395,7 @@ void retro_run()
 
 #ifndef FBNEO_DEBUG
 	// Setting RA's video or audio driver to null will disable video/audio bits,
-	// however that's a problem because i do batch run with video/audio disabled to detect asan issues 
+	// however that's a problem because i do batch run with video/audio disabled to detect asan issues
 	int nAudioVideoEnable = 0;
 	if (environ_cb(RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE, &nAudioVideoEnable))
 	{
@@ -1942,6 +1952,9 @@ static bool retro_load_game_common()
 	// Initialize Romdata path
 	snprintf_nowarn(szAppRomdatasPath, sizeof(szAppRomdatasPath), "%s%cfbneo%cromdata%c", g_system_dir, PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C());
 
+	// [NON-OFFICIAL HACK] Initialize Command path
+	snprintf_nowarn(szAppCommandPath, sizeof(szAppCommandPath), "%s%cfbneo%ccommand%c", g_system_dir, PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C());
+
 	// Initialize Multipath definition path
 	snprintf_nowarn(szAppPathDefPath, sizeof(szAppPathDefPath), "%s%cfbneo%cpath%c", g_system_dir, PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C(), PATH_DEFAULT_SLASH_C());
 
@@ -2015,6 +2028,10 @@ static bool retro_load_game_common()
 
 		bIsNeogeoCartGame = ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_SNK_NEOGEO);
 #endif
+		// [NON-OFFICIAL HACK]
+		bIsPgmCartGame = ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_IGS_PGM);
+		bIsPgm2CartGame = ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_IGS_PGM2);
+		bIsCps1CartGame = ((BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_CAPCOM_CPS1 || (BurnDrvGetHardwareCode() & HARDWARE_PUBLIC_MASK) == HARDWARE_CAPCOM_CPS1_QSOUND);
 
 		// Define nMaxPlayers early;
 		nMaxPlayers = BurnDrvGetMaxPlayers();
@@ -3109,7 +3126,7 @@ char* GameDecoration(UINT32 nBurnDrv)
 			if ((BurnDrvGetFlags() & BDF_BOOTLEG) || (BurnDrvGetTextA(DRV_COMMENT) && strlen(BurnDrvGetTextA(DRV_COMMENT)) > 0)) {
 				s8 = ", ";
 			}
-		}		
+		}
 		if (BurnDrvGetFlags() & BDF_BOOTLEG) {
 			s9 = "Bootleg";
 			if (BurnDrvGetTextA(DRV_COMMENT) && strlen(BurnDrvGetTextA(DRV_COMMENT)) > 0) {

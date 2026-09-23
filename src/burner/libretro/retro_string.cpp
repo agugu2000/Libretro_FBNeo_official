@@ -1,6 +1,7 @@
 #include "retro_common.h"
 
-#define MAX_LANGUAGES	3
+// [NON-OFFICIAL HACK] Include non-official features for extended localized strings
+#include "non_official_features.h"			// [#define MAX_LANGUAGES	3] is inside
 
 const char *pSelLangStr[NUM_STRING];
 
@@ -563,6 +564,10 @@ void set_multi_language_strings()
 
 	for (UINT32 i = 0; i < NUM_STRING; i++)
 		pSelLangStr[i] = multi_language_strings[nLangcode][i];
+
+    // [NON-OFFICIAL HACK] Initialize non-official localized strings
+    for (UINT32 i = 0; i < NUM_STRING_NONOFFICIAL; i++)
+        pSelLangStrNonOfficial[i] = multi_language_strings_nonofficial[nLangcode][i];
 }
 
 #undef NUM_STRING

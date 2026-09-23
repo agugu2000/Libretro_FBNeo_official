@@ -43,9 +43,9 @@ typedef UG_U8                        UG_COLOR;
 #error "You must define a color space!"
 #endif
 #if defined(UGUI_USE_COLOR_RGB888) && defined(UGUI_USE_COLOR_RGB565) || \
-	defined(UGUI_USE_COLOR_RGB888) && defined(UGUI_USE_COLOR_BW)     || \
-	defined(UGUI_USE_COLOR_RGB565) && defined(UGUI_USE_COLOR_BW)     || \
-	defined(UGUI_USE_COLOR_RGB888) && defined(UGUI_USE_COLOR_RGB565) && defined(UGUI_USE_COLOR_BW)
+      defined(UGUI_USE_COLOR_RGB888) && defined(UGUI_USE_COLOR_BW) || \
+      defined(UGUI_USE_COLOR_RGB565) && defined(UGUI_USE_COLOR_BW) || \
+      defined(UGUI_USE_COLOR_RGB888) && defined(UGUI_USE_COLOR_RGB565) && defined(UGUI_USE_COLOR_BW)
 #error "You must define only one color space!"
 #endif
 #if !defined(C_PAL_WINDOW)
@@ -56,8 +56,6 @@ typedef UG_U8                        UG_COLOR;
 /* -- DEFINES                                                                    -- */
 /* -------------------------------------------------------------------------------- */
 /* Internal helpers */
-#define UG_GetFontWidth(f)                            *(f+1)
-#define UG_GetFontHeight(f)                           *(f+2)
 #define swap(a, b)                                    { UG_U16 t=a; a=b; b=t; }
 
 /* Sizing helpers */
@@ -119,31 +117,104 @@ typedef enum
   FONT_TYPE_8BPP
 } FONT_TYPE;
 
+/* --------------------------------------------------------------------------------
+ * Font array layout
+ *
+ * Byte 0 tells old and new formats apart:
+ *   bit7 = 1 : old format (legacy, equal-size cells, LSB-left)
+ *   bit7 = 0 : new format (tight bounding box + bearing, LSB-left)
+ *   bit0     : font_type, 0 = 1bpp, 1 = 8bpp
+ *   bit1-6   : reserved, 0
+ *
+ * Old format layout (unchanged, kept for compatibility):
+ *   [0]      font_type (bit7=is_old_font)
+ *   [1]      char_width
+ *   [2]      char_height
+ *   [3..4]   number_of_chars        (big endian)
+ *   [5..6]   number_of_offsets      (big endian)
+ *   [7..8]   number_of_range_flags  (big endian)
+ *   [9..10]  bytes_per_char         (big endian)
+ *   [11]     widths present (1/0)
+ *   [...]    widths / offsets / range_flags / data
+ *
+ * New format layout (multi-byte ints big-endian):
+ *   [header 20 bytes]
+ *     0   byte0        bit7=0, bit0=font_type
+ *     1   reserved     0
+ *     2-3 max_ink_w    2B BE
+ *     4-5 max_ink_h    2B BE
+ *     6-9 number_of_chars 4B BE
+ *    10-13 total_size  4B BE
+ *    14-19 reserved
+ *   [codepoints:    number_of_chars * 2B BE, ascending]
+ *   [metrics:       number_of_chars * 10B]
+ *                     w(2), h(2), x_off(int16), y_off(int16), adv(2)
+ *   [data_offsets:  number_of_chars * 4B BE]
+ *   [data:          variable, tight]
+ *                     1bpp: ceil(w/8) * h bytes
+ *                     8bpp: w * h bytes
+ * -------------------------------------------------------------------------------- */
+#define UG_FONT_FMT_OLD   0
+#define UG_FONT_FMT_NEW   1
+
+#define UG_FONT_TYPE_1BPP 0
+#define UG_FONT_TYPE_8BPP 1
+
+#define UG_FONT_HEADER_SIZE      20
+#define UG_FONT_METRICS_SIZE     10
+#define UG_FONT_CODEPOINT_SIZE   2
+#define UG_FONT_DATA_OFFSET_SIZE 4
+
+#define UG_BIT_ORDER_LSB_LEFT  0
+#define UG_BIT_ORDER_MSB_LEFT  1
+
 typedef struct
 {
-    FONT_TYPE    font_type;
-    UG_U8        is_old_font;                      // This exists to maintain compatibility with old fonts, as they use code page 850 instead of Unicode
-    UG_U8        char_width;
-    UG_U8        char_height;
-    UG_U16       bytes_per_char;
-    UG_U16       number_of_chars;
-    UG_U16       number_of_offsets;
-	UG_U16       number_of_range_flags;
-    const UG_U8  *widths;
-    const UG_U8  *offsets;
-    const UG_U8  *range_flags;                     // Pointer to range flags array
-    const UG_U8  *data;
-    UG_FONT      *font;
+    UG_U16 w;             /* ink width */
+    UG_U16 h;             /* ink height */
+    UG_S16 x_off;         /* left bearing */
+    UG_S16 y_off;         /* top bearing */
+    UG_U16 adv;           /* advance */
+    UG_U8  bit_order;     /* UG_BIT_ORDER_* */
+    const UG_U8 *data;    /* glyph bitmap */
+} UG_GLYPH;
+
+typedef struct
+{
+    UG_U8  format;        /* UG_FONT_FMT_OLD / UG_FONT_FMT_NEW */
+    UG_U8  font_type;
+    UG_U8  is_old_font;
+
+    /* new format */
+    UG_U16 max_ink_w;
+    UG_U16 max_ink_h;
+    UG_U32 number_of_chars;
+    UG_U32 total_size;
+    const UG_U8 *codepoints;
+    const UG_U8 *metrics;
+    const UG_U8 *data_offsets;
+    const UG_U8 *new_data;
+
+    /* old format */
+    UG_U8  old_char_width;
+    UG_U8  old_char_height;
+    UG_U16 old_number_of_chars;
+    UG_U16 old_number_of_offsets;
+    UG_U16 old_bytes_per_char;
+    UG_U8  old_widths_present;
+    const UG_U8 *old_widths;
+    const UG_U8 *old_offsets;
+    const UG_U8 *old_range_flags;
+    const UG_U8 *old_data;
+
+    UG_FONT *font;
 } UG_FONT_DATA;
-
-
 
 #ifdef UGUI_USE_UTF8
 typedef UG_U16                                        UG_CHAR;
 #else
 typedef char                                          UG_CHAR;
 #endif
-
 
 /* -------------------------------------------------------------------------------- */
 /* -- UNIVERSAL STRUCTURES                                                       -- */
@@ -397,6 +468,7 @@ typedef struct
    UG_FONT *font;
    UG_FONT_DATA currentFont;
    UG_U8 transparent_font;
+   UG_U8 shadow_font;
    UG_S8 char_h_space;
    UG_S8 char_v_space;
    UG_COLOR fore_color;
@@ -407,13 +479,12 @@ typedef struct
 } UG_GUI;
 
 #define UG_STATUS_WAIT_FOR_UPDATE                     (1<<0)
-/*
-#include "ugui_button.h"
-#include "ugui_checkbox.h"
-#include "ugui_image.h"
-#include "ugui_progress.h"
-*/
+
+//#include "ugui_button.h"
+//#include "ugui_checkbox.h"
 #include "ugui_fonts.h"
+//#include "ugui_image.h"
+//#include "ugui_progress.h"
 #include "ugui_textbox.h"
 /* -------------------------------------------------------------------------------- */
 /* -- PROTOTYPES                                                                 -- */
@@ -453,6 +524,12 @@ void UG_FontSetHSpace( UG_U16 s );
 void UG_FontSetVSpace( UG_U16 s );
 void UG_FontSetTransparency( UG_U8 t );
 UG_U8 UG_FontGetTransparency( void );
+void UG_FontSetShadow( UG_U8 t );
+UG_U8 UG_FontGetShadow( void );
+
+/* Font metric helpers (functions, support both formats) */
+UG_U16 UG_GetFontWidth( UG_FONT* font );
+UG_U16 UG_GetFontHeight( UG_FONT* font );
 
 /* Miscellaneous functions */
 void UG_WaitForUpdate( void );
@@ -480,6 +557,9 @@ void _UG_SendObjectPrerenderEvent(UG_WINDOW *wnd,UG_OBJECT *obj);
 void _UG_SendObjectPostrenderEvent(UG_WINDOW *wnd,UG_OBJECT *obj);
 #endif
 UG_U32 _UG_ConvertRGB565ToRGB888(UG_U16 c);
+
+/* Glyph lookup (replaces _UG_GetCharData) */
+UG_S16 _UG_GetGlyph( UG_CHAR encoding, UG_GLYPH *g );
 
 /* Window functions */
 UG_RESULT UG_WindowCreate( UG_WINDOW* wnd, UG_OBJECT* objlst, UG_U8 objcnt, void (*cb)( UG_MESSAGE* ) );
