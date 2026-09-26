@@ -64,13 +64,16 @@ UG_S16 UG_Init( UG_GUI* g, UG_DEVICE *device )
    g->char_h_space = 1;
    g->char_v_space = 1;
    g->transparent_font = 0;
-   g->shadow_font = 1;
+   g->shadow_font = 0;
    g->font=NULL;
    g->currentFont.format = UG_FONT_FMT_OLD;
    g->currentFont.font_type = 0;
    g->currentFont.is_old_font = 0;
    g->currentFont.max_ink_w = 0;
    g->currentFont.max_ink_h = 0;
+   g->currentFont.notdef_adv = 0;
+   g->currentFont.ascender = 0;
+   g->currentFont.descender = 0;
    g->currentFont.number_of_chars = 0;
    g->currentFont.total_size = 0;
    g->currentFont.codepoints = NULL;
@@ -129,6 +132,25 @@ UG_U16 UG_GetFontHeight( UG_FONT* font )
    const UG_U8 *p = (const UG_U8 *)font;
    if (p[0] & 0x80) return p[2];
    return (UG_U16)((p[4] << 8) | p[5]);
+}
+
+UG_S16 UG_GetFontAscender( UG_FONT* font )
+{
+   const UG_U8 *p = (const UG_U8 *)font;
+   if (p[0] & 0x80) return (UG_S16)p[2];
+   return (UG_S16)((p[16] << 8) | p[17]);
+}
+
+UG_S16 UG_GetFontDescender( UG_FONT* font )
+{
+   const UG_U8 *p = (const UG_U8 *)font;
+   if (p[0] & 0x80) return 0;
+   return (UG_S16)((p[18] << 8) | p[19]);
+}
+
+UG_S16 UG_GetFontLineHeight( UG_FONT* font )
+{
+   return UG_GetFontAscender(font) - UG_GetFontDescender(font);
 }
 
 /*
@@ -252,7 +274,7 @@ void UG_DrawRoundFrame( UG_S16 x1, UG_S16 y1, UG_S16 x2, UG_S16 y2, UG_S16 r, UG
      swap(x1,x2);
    if ( y2 < y1 )
      swap(y1,y2);
-
+   if(r) r++;               // Fix for corner radius looking weird, this makes the same outline as UG_FillRoundFrame
    if ( r > x2 ) return;
    if ( r > y2 ) return;
 
@@ -550,12 +572,19 @@ void UG_PutString( UG_S16 x, UG_S16 y, char* str )
    UG_GLYPH g;
    UG_S16 line_h;
 
+   _UG_FontSelect(gui->font);
+
+   /* Industry standard: line height = ascender - descender */
+   line_h = (UG_S16)gui->currentFont.ascender
+          - (UG_S16)gui->currentFont.descender;
+   if (line_h <= 0) line_h = 1;
+
    xp=x; yp=y;
 
-   _UG_FontSelect(gui->font);
-   line_h = (gui->currentFont.format == UG_FONT_FMT_NEW)
-          ? (UG_S16)gui->currentFont.max_ink_h
-          : (UG_S16)gui->currentFont.old_char_height;
+   if (gui->currentFont.format == UG_FONT_FMT_NEW) {
+      yp += (UG_S16)gui->currentFont.ascender;   /* line top -> baseline */
+   }
+   /* Old format: keep yp = y (line top), y_off = 0 */
 
    while ( *str != 0 )
    {
@@ -575,7 +604,12 @@ void UG_PutString( UG_S16 x, UG_S16 y, char* str )
          xp = gui->device->x_dim;
          continue;
       }
-      if (_UG_GetGlyph(chr, &g) != 0) continue;
+      if (_UG_GetGlyph(chr, &g) != 0) {
+          UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
+          if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
+          xp += adv + gui->char_h_space;
+          continue;
+      }
       if ( xp + (UG_S16)g.adv > gui->device->x_dim - 1 )
       {
          xp = x;
@@ -604,11 +638,13 @@ void UG_ConsolePutString( char* str )
    UG_CHAR chr;
    UG_GLYPH g;
    UG_S16 line_h;
+   UG_S16 y_draw;
 
    _UG_FontSelect(gui->font);
-   line_h = (gui->currentFont.format == UG_FONT_FMT_NEW)
-          ? (UG_S16)gui->currentFont.max_ink_h
-          : (UG_S16)gui->currentFont.old_char_height;
+   /* Industry standard: line height = ascender - descender */
+   line_h = (UG_S16)gui->currentFont.ascender
+          - (UG_S16)gui->currentFont.descender;
+   if (line_h <= 0) line_h = 1;
 
    while ( *str != 0 )
    {
@@ -628,8 +664,11 @@ void UG_ConsolePutString( char* str )
          continue;
       }
 
-      if (_UG_GetGlyph(chr, &g) != 0){
-        continue;
+      if (_UG_GetGlyph(chr, &g) != 0) {
+          UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
+          if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
+          gui->console.x_pos += adv + gui->char_h_space;
+          continue;
       }
       gui->console.x_pos += g.adv+gui->char_h_space;
 
@@ -645,7 +684,11 @@ void UG_ConsolePutString( char* str )
          UG_FillFrame(gui->console.x_start,gui->console.y_start,gui->console.x_end,gui->console.y_end,gui->console.back_color);
       }
 
-      _UG_PutGlyph(&g, gui->console.x_pos, gui->console.y_pos, gui->console.fore_color, gui->console.back_color, gui->transparent_font);
+      y_draw = gui->console.y_pos;
+      if (gui->currentFont.format == UG_FONT_FMT_NEW) {
+         y_draw += (UG_S16)gui->currentFont.ascender;
+      }
+      _UG_PutGlyph(&g, gui->console.x_pos, y_draw, gui->console.fore_color, gui->console.back_color, gui->transparent_font);
    }
    if((gui->driver[DRIVER_FILL_AREA].state & DRIVER_ENABLED))
      ((void*(*)(UG_S16, UG_S16, UG_S16, UG_S16))gui->driver[DRIVER_FILL_AREA].driver)(-1,-1,-1,-1);
@@ -730,7 +773,7 @@ UG_U8 UG_FontGetShadow( void )
  *
  */
 #ifdef UGUI_USE_UTF8
-UG_CHAR _UG_DecodeUTF8(char **str) {
+static UG_CHAR _UG_DecodeUTF8(char **str) {
     unsigned char c = **str;
     uint32_t encoding = 0;
     int bytes_left = 0;
@@ -757,7 +800,11 @@ UG_CHAR _UG_DecodeUTF8(char **str) {
     (*str)++;
     while (bytes_left > 0) {
         c = **str;
-        if (c == 0 || (c & 0xC0) != 0x80) {
+        if (c == 0) {
+            /* Unexpected end of string, do not advance, let caller see '\0' */
+            return 0;
+        }
+        if ((c & 0xC0) != 0x80) {
             // Invalid continuation byte
             (*str)++;
             return -1;
@@ -877,6 +924,12 @@ void _UG_FontSelect(UG_FONT *font) {
         gui->currentFont.font_type = UG_FONT_TYPE_1BPP;
         gui->currentFont.old_char_width  = p[1];
         gui->currentFont.old_char_height = p[2];
+        gui->currentFont.notdef_adv = gui->currentFont.old_char_width;
+
+        /* Old format: cell model, line height = cell height */
+        gui->currentFont.ascender  = (UG_S16)gui->currentFont.old_char_height;
+        gui->currentFont.descender = 0;
+
         gui->currentFont.old_number_of_chars   = (UG_U16)((p[3] << 8) | p[4]);
         gui->currentFont.old_number_of_offsets = (UG_U16)((p[5] << 8) | p[6]);
         gui->currentFont.old_bytes_per_char    = (UG_U16)((p[9] << 8) | p[10]);
@@ -899,6 +952,12 @@ void _UG_FontSelect(UG_FONT *font) {
         gui->currentFont.font_type = p[0] & 0x01;
         gui->currentFont.max_ink_w = (UG_U16)((p[2] << 8) | p[3]);
         gui->currentFont.max_ink_h = (UG_U16)((p[4] << 8) | p[5]);
+        gui->currentFont.notdef_adv = (UG_U16)((p[14] << 8) | p[15]);
+
+        /* Industry standard: ascender / descender (always present in regenerated fonts) */
+        gui->currentFont.ascender  = (UG_S16)((p[16] << 8) | p[17]);
+        gui->currentFont.descender = (UG_S16)((p[18] << 8) | p[19]);
+
         gui->currentFont.number_of_chars = ((UG_U32)p[6] << 24) | ((UG_U32)p[7] << 16) |
                                            ((UG_U32)p[8] << 8) | (UG_U32)p[9];
         gui->currentFont.total_size = ((UG_U32)p[10] << 24) | ((UG_U32)p[11] << 16) |
@@ -998,19 +1057,6 @@ static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COL
     /* ================= 1BPP fonts ================= */
     if (gui->currentFont.font_type == UG_FONT_TYPE_1BPP) {
 
-        /* ---------- Shadow pass: offset by (+1,+1), ink only ---------- */
-        if (!driver && gui->shadow_font) {
-            UG_COLOR shadow_color =
-               ((((fc & 0xFF)   * 64 + (bc & 0xFF)   * 192) >> 8) & 0xFF)   |
-               ((((fc & 0xFF00) * 64 + (bc & 0xFF00) * 192) >> 8) & 0xFF00) |
-               ((((fc & 0xFF0000) * 64 + (bc & 0xFF0000) * 192) >> 8) & 0xFF0000);
-
-            _UG_BlitGlyph1BPP(g,
-                              draw_x, draw_y + 1,
-                              shadow_color, shadow_color,
-                              1 /* ink only, no background */);
-        }
-
         /* ---------- Body pass ---------- */
         if (driver) {
             /* ---- Hardware acceleration: keep the original FILL_AREA logic ---- */
@@ -1102,11 +1148,50 @@ static UG_S16 _UG_PutGlyph( UG_GLYPH *g, UG_S16 x, UG_S16 y, UG_COLOR fc, UG_COL
                  gui->driver[DRIVER_FILL_AREA].driver)(-1, -1, -1, -1);
             }
         } else {
-            /* ---- No hardware acceleration: use the generic blit ---- */
+            /* ---- No hardware acceleration ----
+             * Draw order (mathematically correct):
+             *   1. background (bc) over whole bbox, if opaque
+             *   2. shadow ink, offset (+1,+1)
+             *   3. body ink, at (0,0), ink only (background already drawn in step 1)
+             */
+            if (!trans) {
+                UG_FillFrame(draw_x, draw_y,
+                             draw_x + (UG_S16)g->w - 1,
+                             draw_y + (UG_S16)g->h - 1,
+                             bc);
+            }
+
+            if (gui->shadow_font) {
+                UG_COLOR shadow_color =
+                    ((((fc & 0xFF)   * 64 + (bc & 0xFF)   * 192) >> 8) & 0xFF)   |
+                    ((((fc & 0xFF00) * 64 + (bc & 0xFF00) * 192) >> 8) & 0xFF00) |
+                    ((((fc & 0xFF0000) * 64 + (bc & 0xFF0000) * 192) >> 8) & 0xFF0000);
+
+                if (gui->shadow_font == 1) {
+                    /* Drop shadow: single offset (+1, +1) */
+                    _UG_BlitGlyph1BPP(g,
+                                      draw_x + 0, draw_y + 1,
+                                      shadow_color, shadow_color,
+                                      1 /* ink only */);
+                } else if (gui->shadow_font == 2) {
+                    /* Outline: 8 directions */
+                    UG_S16 dx, dy;
+                    for (dy = -1; dy <= 1; dy++) {
+                        for (dx = -1; dx <= 1; dx++) {
+                            if (dx == 0 && dy == 0) continue;
+                            _UG_BlitGlyph1BPP(g,
+                                              draw_x + dx, draw_y + dy,
+                                              shadow_color, shadow_color,
+                                              1 /* ink only */);
+                        }
+                    }
+                }
+            }
+
             _UG_BlitGlyph1BPP(g,
                               draw_x, draw_y,
                               fc, bc,
-                              trans);
+                              1 /* ink only, background already drawn in step 1 */);
         }
     }
 #if defined(UGUI_USE_COLOR_RGB888) || defined(UGUI_USE_COLOR_RGB565)
@@ -1312,12 +1397,13 @@ void _UG_PutText(UG_TEXT* txt)
 
    UG_S16 ye=txt->a.ye;
    UG_S16 ys=txt->a.ys;
-   UG_S16 char_height;
 
    _UG_FontSelect(txt->font);
-   char_height = (gui->currentFont.format == UG_FONT_FMT_NEW)
-               ? (UG_S16)gui->currentFont.max_ink_h
-               : (UG_S16)gui->currentFont.old_char_height;
+   /* Industry standard: line height = ascender - descender */
+   UG_S16 char_height = (UG_S16)gui->currentFont.ascender
+                      - (UG_S16)gui->currentFont.descender;
+
+   if (char_height <= 0) return;
 
    if ( (ye - ys) < char_height ){
      return;
@@ -1367,6 +1453,11 @@ void _UG_PutText(UG_TEXT* txt)
    if ( align & ALIGN_V_CENTER ) yp >>= 1;
    yp += ys;
 
+   /* New format: line top -> baseline. Old format: keep line top (y_off = 0). */
+   if (gui->currentFont.format == UG_FONT_FMT_NEW) {
+      yp += (UG_S16)gui->currentFont.ascender;
+   }
+
    while( 1 )
    {
       UG_U16 wl = 0;
@@ -1386,7 +1477,12 @@ void _UG_PutText(UG_TEXT* txt)
         if( chr == 0 || chr == '\n'){
           break;
         }
-         if (_UG_GetGlyph(chr, &g) != 0){continue;}
+         if (_UG_GetGlyph(chr, &g) != 0) {
+             UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
+             if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
+             wl += adv + char_h_space;
+             continue;
+         }
          wl += g.adv + char_h_space;
       }
       wl -= char_h_space;
@@ -1417,8 +1513,13 @@ void _UG_PutText(UG_TEXT* txt)
          else if(chr=='\n'){
            break;
          }
-         if (_UG_GetGlyph(chr, &g) != 0){continue;}
-         _UG_PutGlyph(&g, xp, yp, txt->fc, txt->bc, 1);
+         if (_UG_GetGlyph(chr, &g) != 0) {
+             UG_S16 adv = (UG_S16)gui->currentFont.notdef_adv;
+             if (adv == 0) adv = (UG_S16)gui->currentFont.max_ink_w;
+             xp += adv + char_h_space;
+             continue;
+         }
+         _UG_PutGlyph(&g,xp,yp,txt->fc,txt->bc,gui->transparent_font);
          xp += g.adv + char_h_space;
       }
       yp += char_height + char_v_space;
@@ -1536,16 +1637,18 @@ void _UG_SendObjectPostrenderEvent( UG_WINDOW *wnd, UG_OBJECT *obj )
 
 UG_U32 _UG_ConvertRGB565ToRGB888(UG_U16 c)
 {
-   UG_U32 r,g,b;
+   UG_U32 r, g, b;
 
-   r = (c&0xF800)<<8;
-   r += (r+7)>>5;
+   r = (c >> 11) & 0x1F;
+   r = (r << 3) | (r >> 2);
+   r <<= 16;
 
-   g = (c&0x7E0)<<5;
-   g += (g+3)>>6;
+   g = (c >> 5) & 0x3F;
+   g = (g << 2) | (g >> 4);
+   g <<= 8;
 
-   b = (c&0x1F)<<3;
-   b += (b+7)>>5;
+   b = c & 0x1F;
+   b = (b << 3) | (b >> 2);
 
    return (r | g | b);
 }
@@ -1652,32 +1755,12 @@ void UG_WaitForUpdate( void )
 
 void UG_DrawBMP( UG_S16 xp, UG_S16 yp, UG_BMP* bmp )
 {
-   UG_COLOR c;
    UG_S16 x,y;
 
    if ( bmp->p == NULL ) return;
 
-   if ( bmp->bpp == BMP_BPP_1){
-     UG_U8 xx,yy,b;
-     const UG_U8* p = (UG_U8*)bmp->p;         // This is untested !
-      for(y=0;y<bmp->height;y++)
-      {
-         for(x=0;x<bmp->width;x++)
-         {
-            yy = y / 8 ;
-            xx = y % 8;
-            b = p[x + yy * bmp->width];
-            xx = 1 << xx;
-            xx = xx & b;
-            if(xx) c = gui->fore_color;
-            else c = gui->back_color;
-            UG_DrawPixel( x + xp , y + yp , c );
-         }
-      }
-     return;
-   }
    #if defined UGUI_USE_COLOR_RGB888 || defined UGUI_USE_COLOR_RGB565
-   else if ( bmp->bpp == BMP_BPP_16){
+   if ( bmp->bpp == BMP_BPP_16){
 
      /* Is hardware acceleration available? */
 
@@ -1978,7 +2061,7 @@ UG_RESULT UG_WindowSetTitleTextFont( UG_WINDOW* wnd, UG_FONT* font )
       wnd->title.font = font;
       if ( wnd->title.height <= (UG_GetFontHeight(font) + 1) )
       {
-         wnd->title.height = UG_GetFontWidth(font) + 2;
+         wnd->title.height = UG_GetFontHeight(font) + 2;
          wnd->state &= ~WND_STATE_REDRAW_TITLE;
       }
       return UG_RESULT_OK;
@@ -2457,7 +2540,7 @@ static void _UG_WindowUpdate( UG_WINDOW* wnd )
    }
    else
    {
-      UG_FillFrame(wnd->xs,wnd->xs,wnd->xe,wnd->ye,gui->desktop_color);
+      UG_FillFrame(wnd->xs,wnd->ys,wnd->xe,wnd->ye,gui->desktop_color);
    }
 }
 

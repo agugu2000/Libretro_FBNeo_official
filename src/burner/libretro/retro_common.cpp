@@ -1254,7 +1254,8 @@ void set_environment()
 	int nbr_romdatas = romdata_core_options.size();
 	// [NON-OFFICIAL HACK]
 	int nbr_macros = get_macro_count();
-	int nbr_command_dat = get_command_dat_count();
+	// [NON-OFFICIAL HACK] command.dat overlay uses a single option now
+	int nbr_command_dat = 1;
 
 #if 0
 	log_cb(RETRO_LOG_INFO, "set_environment: SYSTEM: %d, DIPSWITCH: %d\n", nbr_vars, nbr_dips);
@@ -1386,7 +1387,7 @@ void set_environment()
 	if (bStreetFighterLayout) {
 		idx_var = AddMacroOptions("streetfighter", nbr_macros, idx_var);
 	}
-	idx_var = AddCommandDatOptions(idx_var);
+	idx_var = AddCommandDatOption(idx_var);
 
 	option_defs_us[idx_var] = var_empty;
 

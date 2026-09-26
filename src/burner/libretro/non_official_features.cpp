@@ -2,13 +2,34 @@
 #define SKIP_STDIO_REDEFINES
 #endif
 
+#include <map>
+#include <algorithm>
+
 #include "non_official_features.h"
 #include "retro_string.h"
 #include "retro_common.h"
 #include "burner.h"
+#include "ugui_tools.h"
+#include "retro_input.h"
+#include "utf8_util.h"
 
-#include <map>
-#include <algorithm>
+// ---------------------------------------------------------------------------
+// [NON-OFFICIAL HACK] externs for command.dat overlay
+// ---------------------------------------------------------------------------
+
+extern retro_environment_t        environ_cb;
+
+// accessors implemented in libretro.cpp
+extern void  NonOfficial_VideoCb(const void* data, unsigned w, unsigned h, size_t pitch);
+extern void  NonOfficial_AudioBatchCb(const int16_t* data, size_t frames);
+extern void* NonOfficial_GetPvidImage(void);
+extern int   NonOfficial_GetNBurnBpp(void);
+extern INT32 NonOfficial_GetNBurnPitch(void);
+extern INT32 NonOfficial_GetNGameWidth(void);
+extern INT32 NonOfficial_GetNGameHeight(void);
+extern void* NonOfficial_GetPAudBuffer(void);
+extern INT32 NonOfficial_GetNBurnSoundLen(void);
+
 
 // ---------------------------------------------------------------------------
 // Localized strings (18 entries, independent of official NUM_STRING)
@@ -35,7 +56,9 @@ const char* multi_language_strings_nonofficial[MAX_LANGUAGES][NUM_STRING_NONOFFI
 		"Allow Ignore CRC",
 		"The prerequisite is to enable 'Allow patched romsets'. Allowing rom with the correct file name and file size to run by ignoring CRC check. \nNote:By ignoring the CRC check, the game content loaded may not align with the intended game content",
 		"Command",
-		"Display the command list and information for current rom(recommend using menu driver:ozone/glui)",
+		"Display the command list and information for current rom",
+		"Off",
+		"Show",
 	},
 	{
 		"肩键 L",
@@ -55,7 +78,9 @@ const char* multi_language_strings_nonofficial[MAX_LANGUAGES][NUM_STRING_NONOFFI
 		"允许忽略CRC",
 		"先决条件是启用「允许修补集组」。允许通过忽略CRC校验来运行具有正确文件名和文件大小的ROM。\n注意：忽略CRC校验可能会导致加载的游戏内容与预期的游戏内容不匹配",
 		"出招表",
-		"显示此ROM的出招表等信息(推荐使用菜单驱动ozone/glui)",
+		"显示此ROM的出招表等信息",
+		"关闭",
+		"显示",
 	},
 	{
 		"肩鍵 L",
@@ -75,7 +100,9 @@ const char* multi_language_strings_nonofficial[MAX_LANGUAGES][NUM_STRING_NONOFFI
 		"允許忽略CRC",
 		"先决条件是啟用「允許修補集組」。允許通過忽略CRC校驗來運行具有正確文件名和文件大小的ROM。\n注意：忽略CRC校驗可能會導致加載的遊戲內容與預期的遊戲內容不匹配",
 		"出招表",
-		"顯示此ROM的出招表等訊息(推薦使用選單主題ozone/glui)",
+		"顯示此ROM的出招表等訊息",
+		"關閉",
+		"顯示",
 	}
 };
 
@@ -525,308 +552,282 @@ bool g_bIniFromZip = false;
 // ---------------------------------------------------------------------------
 // command.dat move-list display
 // ---------------------------------------------------------------------------
+static std::vector<std::string> g_display_lines;
+static void BuildDisplayLines(const std::string& src, int max_width) {
+    g_display_lines.clear();
 
-// TODO: mapping table should be aligned with MAME source:
-//       https://github.com/mamedev/mame/blob/master/plugins/data/button_char.lua
-// Unicode is used to approximate MAME's built-in icons as closely as possible.
-static SymbolMapping SymbolList[] = {
-	{ "_A", "Ⓐ" }, { "_$", "▲" }, { "@L-punch", "[ⓁⓅ]" },
-	{ "_B", "Ⓑ" }, { "_#", "▣" }, { "@M-punch", "[ⓂⓅ]" },
-	{ "_C", "Ⓒ" }, { "_]", "□" }, { "@S-punch", "[ⓈⓅ]" },
-	{ "_D", "Ⓓ" }, { "_[", "■" }, { "@L-kick", "[ⓁⓀ]" },
-	{ "_H", "Ⓗ" }, { "_{", "▽" }, { "@M-kick", "[ⓂⓀ]" },
-	{ "_Z", "Ⓩ" }, { "_}", "▼" }, { "@S-kick", "[ⓈⓀ]" },
-	{ "_a", "①" }, { "_<", "◇" }, { "@3-kick", "[③Ⓚ]" },
-	{ "_b", "②" }, { "_>", "◆" }, { "@3-punch", "[③Ⓟ]" },
-	{ "_c", "③" }, { "^s", "Ⓢ" }, { "@2-kick", "[②Ⓚ]" },
-	{ "_d", "④" }, { "^S", "[Ⓢⓔⓛ]" }, { "@2-punch", "[②Ⓟ]" },
-	{ "_e", "⑤" }, { "^E", "[ⓁⓅ]" }, { "@custom1", "①" },
-	{ "_f", "⑥" }, { "^F", "[ⓂⓅ]" }, { "@custom2", "②" },
-	{ "_g", "⑦" }, { "^G", "[ⓈⓅ]" }, { "@custom3", "③" },
-	{ "_h", "⑧" }, { "^H", "[ⓁⓀ]" }, { "@custom4", "④" },
-	{ "_i", "⑨" }, { "^I", "[ⓂⓀ]" }, { "@custom5", "⑤" },
-	{ "_j", "⑩" }, { "^J", "[ⓈⓀ]" }, { "@custom6", "⑥" },
-	{ "_+", "＋" }, { "^T", "[③Ⓚ]" }, { "@custom7", "⑦" },
-	{ "_.", "…" }, { "^U", "[③Ⓟ]" }, { "@custom8", "⑧" },
-	{ "_1", "↙" }, { "^V", "[②Ⓚ]" }, { "@up", "↑" },
-	{ "_2", "↓" }, { "^W", "[②Ⓟ]" }, { "@down", "↓" },
-	{ "_3", "↘" }, { "^!", "↳" }, { "@left", "←" },
-	{ "_4", "←" }, { "^1", "⇙" }, { "@right", "→" },
-	{ "_5", "●" }, { "^2", "⇓" }, { "@lever", "[Ⓟⓝ]" },
-	{ "_6", "→" }, { "^3", "⇘" }, { "@nplayer", "[Ⓟⓝ]" },
-	{ "_7", "↖" }, { "^4", "⇐" }, { "@1player", "[Ⓟ①]" },
-	{ "_8", "↑" }, { "^6", "⇒" }, { "@2player", "[Ⓟ②]" },
-	{ "_9", "↗" }, { "^7", "⇖" }, { "@3player", "[Ⓟ③]" },
-	{ "_N", "N" }, { "^8", "⇑" }, { "@4player", "[Ⓟ④]" },
-	{ "_S", "[Ⓢⓣ]" }, { "^9", "⇗" }, { "@5player", "[Ⓟ⑤]" },
-	{ "_P", "Ⓟ" }, { "^M", "[Ⓜⓐⓧ]" }, { "@6player", "[Ⓟ⑥]" },
-	{ "_K", "Ⓚ" }, { "^-", "⇥" }, { "@7player", "[Ⓟ⑦]" },
-	{ "_G", "Ⓖ" }, { "^=", "⇤" }, { "@8player", "[Ⓟ⑧]" },
-	{ "_!", "→" }, { "^*", "[ⓢⓉⓐⓟ]" }, { "@-->","→" },
-	{ "_k", "[←◒]" }, { "^?", "[Ⓑⓣⓝ?]" }, { "@==>", "↳" },
-	{ "_l", "[→◓]" }, { "@A-button", "Ⓐ" }, { "@hcb", "[←◒]" },
-	{ "_m", "[→◒]" }, { "@B-button", "Ⓑ" }, { "@huf", "[→◓]" },
-	{ "_n", "[←◓]" }, { "@C-button", "Ⓒ" }, { "@hcf", "[→◒]" },
-	{ "_o", "[↓◶]" }, { "@D-button", "Ⓓ" }, { "@hub", "[←◓]" },
-	{ "_p", "[←◵]" }, { "@E-button", "Ⓔ" }, { "@qfd", "[↓◶]" },
-	{ "_q", "[↑◴]" }, { "@F-button", "Ⓕ" }, { "@qdb", "[←◵]" },
-	{ "_r", "[→◷]" }, { "@G-button", "Ⓖ" }, { "@qbu", "[↑◴]" },
-	{ "_s", "[↓◵]" }, { "@H-button", "Ⓗ" }, { "@quf", "[→◷]" },
-	{ "_t", "[↑◶]" }, { "@I-button", "Ⓘ" }, { "@qbd", "[↓◵]" },
-	{ "_u", "[↑◷]" }, { "@J-button", "Ⓙ" }, { "@qdf", "[↑◶]" },
-	{ "_v", "[←◴]" }, { "@K-button", "Ⓚ" }, { "@qfu", "[↑◷]" },
-	{ "_w", "[↻◯]" }, { "@L-button", "Ⓛ" }, { "@qub", "[←◴]" },
-	{ "_x", "[↻◯]" }, { "@M-button", "Ⓜ" }, { "@fdf", "[↻◯]" },
-	{ "_y", "[↺◯]" }, { "@N-button", "Ⓝ" }, { "@fub", "[↻◯]" },
-	{ "_z", "[↺◯]" }, { "@O-button", "Ⓞ" }, { "@fuf", "[↺◯]" },
-	{ "_L", "↠" }, { "@P-button", "Ⓟ" }, { "@fdb", "[↺◯]" },
-	{ "_M", "↞" }, { "@Q-button", "Ⓠ" }, { "@xff", "⇥" },
-	{ "_Q", "[Ⓓⓡⓐⓖⓞⓝ⇒]" }, { "@R-button", "Ⓡ" }, { "@xbb", "⇤" },
-	{ "_R", "[Ⓓⓡⓐⓖⓞⓝ⇐]" }, { "@S-button", "Ⓢ" }, { "@dsf", "[Ⓓⓡⓐⓖⓞⓝ⇒]" },
-	{ "_^", "[Ⓐⓘⓡ]" }, { "@T-button", "Ⓣ" }, { "@dsb", "[Ⓓⓡⓐⓖⓞⓝ⇐]" },
-	{ "_?", "[Ⓓⓘⓡ]" }, { "@U-button", "Ⓤ" }, { "@AIR", "[Ⓐⓘⓡ]" },
-	{ "_X", "[Ⓣⓐⓟ]" }, { "@V-button", "Ⓥ" }, { "@DIR", "[Ⓓⓘⓡ]" },
-	{ "_|", "[Ⓙⓤⓜⓟ]" }, { "@W-button", "Ⓦ" }, { "@MAX", "[Ⓜⓐⓧ]" },
-	{ "_O", "[Ⓗⓞⓛⓓ]" }, { "@X-button", "Ⓧ" }, { "@TAP", "[Ⓣⓐⓟ]" },
-	{ "_-", "[Ⓐⓘⓡ]" }, { "@Y-button", "Ⓨ" }, { "@jump", "[Ⓙⓤⓜⓟ]" },
-	{ "_=", "[Ⓢⓠⓤⓐⓣ]" }, { "@Z-button", "Ⓩ" }, { "@hold", "[Ⓗⓞⓛⓓ]" },
-	{ "_~", "[Ⓒⓗⓐⓡⓖⓔ]" }, { "@decrease", "⊕" }, { "@air", "[ⓐⓘⓡ]" },
-	{ "_`", "•" }, { "@increase", "⊖" }, { "@sit", "[Ⓢⓠⓤⓐⓣ]" },
-	{ "_@", "◎" }, { "@BALL", "●" }, { "@close", "⇥" },
-	{ "_)", "○" }, { "@start", "[Ⓢⓣ]" }, { "@away", "⇤" },
-	{ "_(", "●" }, { "@select", "[Ⓢⓔⓛ]" }, { "@charge", "[Ⓒⓗⓐⓡⓖⓔ]" },
-	{ "_*", "☆" }, { "@punch", "Ⓟ" }, { "@tap", "[ⓢⓉⓐⓟ]" },
-	{ "_&", "★" }, { "@kick", "Ⓚ" }, { "@button", "[Ⓑⓣⓝ?]" },
-	{ "_%", "△" }, { "@guard", "Ⓖ" }
-};
+    size_t line_start = 0;
+    while (line_start <= src.size()) {
+        size_t line_end = src.find('\n', line_start);
+        if (line_end == std::string::npos) line_end = src.size();
 
-static SymbolMapping SymbolList_ChineseAlignment[] = {
-	{ "═", "\uFF1D" },	// full-width equals sign
-	{ "│", "\uFF5C" },	// full-width vertical bar
-	{ "  ", "\u3000" }	// full-width space
-};
+        std::string line = src.substr(line_start, line_end - line_start);
 
-static std::map<std::string, std::string> symbolMap;
-static std::map<std::string, std::string> symbolMap_ChineseAlignment;
+        if (line.empty()) {
+            g_display_lines.push_back("");
+        } else {
+            size_t pos = 0;
+            while (pos < line.size()) {
+                int width = 0;
+                size_t end = pos;
+                while (end < line.size()) {
+                    int cp = 0;
+                    size_t len = utf8_val(&cp, &line[end]);
+                    if (cp == -1 || len == 0) {
+                        len = 1;
+                        cp = (unsigned char)line[end];
+                    }
+                    int adv = gui_get_glyph_advance((unsigned int)cp);
+                    if (width + adv > max_width) break;
+                    width += adv;
+                    end += len;
+                }
 
-static void InitializeSymbolMap()
-{
-	int SymbolListSize = sizeof(SymbolList) / sizeof(SymbolList[0]);
-	for (int i = 0; i < SymbolListSize; ++i) {
-		symbolMap[SymbolList[i].key] = SymbolList[i].value;
-	}
+                if (end == pos) {
+                    end = pos + 1;
+                }
+
+                g_display_lines.push_back(line.substr(pos, end - pos));
+                pos = end;
+            }
+        }
+
+        if (line_end == src.size()) break;
+        line_start = line_end + 1;
+    }
 }
 
-static void InitializeSymbolMap_ChineseAlignment()
+// ---------------------------------------------------------------------------
+// command.dat move-list overlay (uGUI)
+// ---------------------------------------------------------------------------
+
+static int      s_cmd_page           = 0;
+static int      s_cmd_lines_per_page = 0;
+static int      s_cmd_page_count     = 0;
+static bool     s_cmd_overlay_on     = false;
+static uint16_t s_cmd_last_joy       = 0;
+static bool     s_cmd_wait_b_release = false;
+
+static int CommandDatPageCount(int lines_per_page)
 {
-	int SymbolListSize = sizeof(SymbolList_ChineseAlignment) / sizeof(SymbolList_ChineseAlignment[0]);
-	for (int i = 0; i < SymbolListSize; ++i) {
-		symbolMap_ChineseAlignment[SymbolList_ChineseAlignment[i].key] = SymbolList_ChineseAlignment[i].value;
-	}
+    int total = (int)g_display_lines.size();
+    if (total <= 0) return 0;
+    return (total + lines_per_page - 1) / lines_per_page;
 }
 
-// Replace MAME move-list symbols using symbolMap
-static std::string ReplaceSymbols(const std::string& input)
+static bool CommandDatGetPage(int page, int lines_per_page, std::string& out)
 {
-	std::string result = input;
-	std::map<std::string, std::string>::iterator it;
+    int total = (int)g_display_lines.size();
+    if (total <= 0) return false;
 
-	for (it = symbolMap.begin(); it != symbolMap.end(); ++it) {
-		size_t pos = 0;
-		while ((pos = result.find(it->first, pos)) != std::string::npos) {
-			result.replace(pos, it->first.length(), it->second);
-			pos += it->second.length();
-		}
-	}
-	return result;
+    int start = page * lines_per_page;
+    if (start >= total) return false;
+    int end = start + lines_per_page;
+    if (end > total) end = total;
+
+    out.clear();
+    for (int i = start; i < end; i++) {
+        out += g_display_lines[i];
+        out += "\n";
+    }
+    return true;
 }
 
-// Replace characters to keep graphical move-lists aligned in Chinese
-static std::string ReplaceSymbols_ChineseAlignment(const std::string& input)
+static void MakeCommandTitle(char *buf, size_t size)
 {
-	std::string result = input;
-	std::map<std::string, std::string>::iterator it;
-
-	for (it = symbolMap_ChineseAlignment.begin(); it != symbolMap_ChineseAlignment.end(); ++it) {
-		size_t pos = 0;
-		while ((pos = result.find(it->first, pos)) != std::string::npos) {
-			result.replace(pos, it->first.length(), it->second);
-			pos += it->second.length();
-		}
-	}
-	return result;
+    const char *name = BurnDrvGetTextA(DRV_NAME);
+    if (name && name[0]) {
+        snprintf(buf, size, "Command:<%s>", name);
+    } else {
+        snprintf(buf, size, "Command");
+    }
 }
 
-static std::vector<std::string> CommandDataLine;
-
-static std::string TrimNewLine(char* line)
+int AddCommandDatOption(int idx_var)
 {
-	std::string lineStr(line);
-	lineStr.erase(std::remove(lineStr.begin(), lineStr.end(), '\r'), lineStr.end());
-	lineStr.erase(std::remove(lineStr.begin(), lineStr.end(), '\n'), lineStr.end());
-
-	return lineStr;
+    option_defs_us[idx_var].key              = "fbneo-command-dat";
+    option_defs_us[idx_var].desc             = RETRO_COMMAND_DAT_CAT_DESC;
+    option_defs_us[idx_var].desc_categorized = RETRO_COMMAND_DAT_CAT_DESC;
+    option_defs_us[idx_var].info             = RETRO_COMMAND_DAT_CAT_INFO;
+    option_defs_us[idx_var].category_key     = "command_dat";
+    option_defs_us[idx_var].values[0].value  = "Off";
+    option_defs_us[idx_var].values[0].label  = RETRO_COMMAND_OFF_LABEL;
+    option_defs_us[idx_var].values[1].value  = "Show";
+    option_defs_us[idx_var].values[1].label  = RETRO_COMMAND_SHOW_LABEL;
+    option_defs_us[idx_var].values[2].value  = NULL;
+    option_defs_us[idx_var].values[2].label  = NULL;
+    option_defs_us[idx_var].default_value    = "Off";
+    return idx_var + 1;
 }
 
-static bool ReadCommand_Dat()
+void UpdateCommandDatOptionVisibility(void)
 {
-	TCHAR line[4096] = {0};
-	TCHAR buffer[256] = {0};
-	std::string LineStr;
-	std::string LastLineStr;
-	std::string token;
-	std::string drv_name(BurnDrvGetText(DRV_NAME));
-	TCHAR szFilename[MAX_PATH] = _T("");
-	bool foundInfo = false;
-	FILE* cmdFile = NULL;
-	bool containsChinese = false;
+    struct retro_core_option_display option_display;
+    option_display.key = "fbneo-command-dat";
+    option_display.visible = !CommandDat::Get().records.empty();
+    environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &option_display);
+}
 
-	InitializeSymbolMap();
+int CommandDatOverlayTick(void)
+{
+    static int16_t silence_buffer[4096];
 
-	snprintf_nowarn(szFilename, sizeof(szFilename), "%scommand.dat", szAppCommandPath);
-	cmdFile = fopen(szFilename, _T("rt"));
-	if (cmdFile == NULL) {
-		return false;
-	}
+    // ---- 等待 B 释放（关闭 overlay 后吞掉 B 直到松开） ----
+    if (s_cmd_wait_b_release) {
+        uint16_t joy = input_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_MASK);
+        if (joy & (1 << RETRO_DEVICE_ID_JOYPAD_B)) {
+            NonOfficial_VideoCb(NonOfficial_GetPvidImage(),
+                                NonOfficial_GetNGameWidth(),
+                                NonOfficial_GetNGameHeight(),
+                                NonOfficial_GetNBurnPitch());
+            INT32 n = NonOfficial_GetNBurnSoundLen();
+            if (n > 4096) n = 4096;
+            if (n > 0) {
+                memset(silence_buffer, 0, sizeof(int16_t) * n);
+                NonOfficial_AudioBatchCb(silence_buffer, n);
+            }
+            return 1;
+        }
+        s_cmd_wait_b_release = false;
+    }
 
-	while (_fgetts(line, sizeof(line), cmdFile) != NULL) {
-		// Skip comment lines
-		if (line[0] == '#') {
-			continue;
+    struct retro_variable var = {0};
+    var.key = "fbneo-command-dat";
+
+    bool want_show = false;
+    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
+        want_show = (strcmp(var.value, "Show") == 0);
+    }
+
+	// ---- 打开 ----
+    if (want_show && !s_cmd_overlay_on) {
+		const CommandDat::Result& result = CommandDat::Get();
+		if (result.records.empty()) return 0;
+
+		std::string all;
+		for (size_t i = 0; i < result.records.size(); i++) {
+			all += result.records[i].data;
+			all += "\n";
 		}
 
-		// Look for a matching "$info=" line
-		if (!foundInfo) {
-			if (strncmp(line, "$info=", 6) == 0) {
-				std::string info_line(line + 6);
-				std::istringstream iss(info_line);
-				while (std::getline(iss, token, ',')) {
-					strncpy(buffer, token.c_str(), sizeof(buffer) - 1);
-					buffer[sizeof(buffer) - 1] = '\0';
-					token = TrimNewLine(buffer);
-					if (token == drv_name) {
-						foundInfo = true;
-						break;
-					}
-				}
-				continue;
-			}
+        // gui_init(NonOfficial_GetNGameWidth(), NonOfficial_GetNGameHeight(), sizeof(unsigned));
+		gui_init(640, 480, sizeof(unsigned));
+
+		int inner_w = gui_get_content_width();
+		BuildDisplayLines(all, inner_w);
+
+		int inner_h = gui_get_content_height();
+		int line_h  = gui_get_line_height();
+		if (line_h < 1) line_h = 1;
+		s_cmd_lines_per_page = inner_h / line_h;
+		if (s_cmd_lines_per_page < 1) s_cmd_lines_per_page = 1;
+		s_cmd_page_count = CommandDatPageCount(s_cmd_lines_per_page);
+
+        s_cmd_page = 0;
+        std::string page_text;
+        if (!CommandDatGetPage(s_cmd_page, s_cmd_lines_per_page, page_text))
+            return 0;
+
+		gui_set_message(page_text.c_str());
+		{
+			char title[160];
+			MakeCommandTitle(title, sizeof(title));
+			gui_set_window_title_with_page(title, s_cmd_page + 1, s_cmd_page_count);
 		}
+		gui_show_overlay();
 
-		// Once matched, collect every line until the next "$info=" or a blank line
-		if (foundInfo) {
-			LineStr = TrimNewLine(line);
+        s_cmd_overlay_on = true;
+        s_cmd_last_joy   = input_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_MASK);
+    }
+    // ---- 关闭（option 切回 Off） ----
+    else if (!want_show && s_cmd_overlay_on) {
+        gui_hide_overlay();
+        s_cmd_overlay_on = false;
+    }
 
-			if (strncmp(LineStr.c_str(), "$cmd", 4) == 0) {
-				// After a $end, insert a blank line for visual separation
-				if (strncmp(LastLineStr.c_str(), "$end", 4) == 0) {
-					CommandDataLine.push_back("");
-				}
-				LastLineStr = LineStr;
-				continue;
-			}
-			if (strncmp(LineStr.c_str(), "$end", 4) == 0) {
-				LastLineStr = LineStr;
-				continue;
-			}
-			if (LineStr.empty()) {
-				// Avoid duplicated consecutive blank lines
-				if (LastLineStr.empty()) {
-					continue;
-				}
-				CommandDataLine.push_back("");
-				LastLineStr = LineStr;
-				continue;
-			}
-			if (strncmp(LineStr.c_str(), "$info=", 6) == 0) {
-				break;
-			}
-			CommandDataLine.push_back(ReplaceSymbols(LineStr));
-			LastLineStr = LineStr;
-		}
+    if (!s_cmd_overlay_on || !gui_is_overlay_visible())
+        return 0;
+
+    // ---- 输入 ----
+    uint16_t joy     = input_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_MASK);
+    uint16_t pressed = joy & ~s_cmd_last_joy;
+    s_cmd_last_joy   = joy;
+
+    bool need_redraw = false;
+
+    // L 或 左 → 上一页
+    if (pressed & ((1 << RETRO_DEVICE_ID_JOYPAD_L) | (1 << RETRO_DEVICE_ID_JOYPAD_LEFT))) {
+        if (s_cmd_page > 0) { s_cmd_page--; need_redraw = true; }
+    }
+    // R 或 右 → 下一页
+	if (pressed & ((1 << RETRO_DEVICE_ID_JOYPAD_R) | (1 << RETRO_DEVICE_ID_JOYPAD_RIGHT))) {
+		if (s_cmd_page + 1 < s_cmd_page_count) { s_cmd_page++; need_redraw = true; }
 	}
+    // B → 关闭
+    if (pressed & (1 << RETRO_DEVICE_ID_JOYPAD_B)) {
+        struct retro_variable v = {0};
+        v.key   = "fbneo-command-dat";
+        v.value = "Off";
+        environ_cb(RETRO_ENVIRONMENT_SET_VARIABLE, &v);
+        gui_hide_overlay();
+        s_cmd_overlay_on     = false;
+        s_cmd_wait_b_release = true;
+        return 1;
+    }
 
-	while (!CommandDataLine.empty() && CommandDataLine.back().empty()) {
-		CommandDataLine.pop_back();
-	}
-
-	// Detect Chinese characters and adjust alignment if present
-	if (!CommandDataLine.empty()) {
-		for (size_t i = 0; i < CommandDataLine.size(); ++i) {
-			for (size_t j = 0; j < CommandDataLine[i].size(); ++j) {
-				unsigned char c1 = CommandDataLine[i][j];
-				if ((c1 & 0xF0) == 0xE0) {
-					if (j + 2 < CommandDataLine[i].size()) {
-						unsigned char c2 = CommandDataLine[i][j + 1];
-						unsigned char c3 = CommandDataLine[i][j + 2];
-						if ((c2 & 0xC0) == 0x80 && (c3 & 0xC0) == 0x80) {
-							unsigned int unicode = ((c1 & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F);
-							if (unicode >= 0x4E00 && unicode <= 0x9FFF) {
-								containsChinese = true;
-								break;
-							}
-						}
-					}
-				}
+	if (need_redraw) {
+		std::string page_text;
+		if (CommandDatGetPage(s_cmd_page, s_cmd_lines_per_page, page_text)) {
+			gui_set_message(page_text.c_str());
+			{
+				char title[160];
+				MakeCommandTitle(title, sizeof(title));
+				gui_set_window_title_with_page(title, s_cmd_page + 1, s_cmd_page_count);
 			}
 		}
 	}
 
-	if (containsChinese) {
-		InitializeSymbolMap_ChineseAlignment();
-		for (size_t i = 0; i < CommandDataLine.size(); ++i) {
-			CommandDataLine[i] = ReplaceSymbols_ChineseAlignment(CommandDataLine[i]);
-		}
-	}
+    // ---- 渲染 + 合成 + 静音 ----
+    gui_draw();
+    // gui_blend_onto(NonOfficial_GetPvidImage(), NonOfficial_GetNBurnBpp(),
+    //                NonOfficial_GetNGameWidth(), NonOfficial_GetNGameHeight());
+    // NonOfficial_VideoCb(NonOfficial_GetPvidImage(),
+    //                     NonOfficial_GetNGameWidth(),
+    //                     NonOfficial_GetNGameHeight(),
+    //                     NonOfficial_GetNBurnPitch());
+	NonOfficial_VideoCb(gui_get_framebuffer(),
+						640, 480,
+						640 * sizeof(unsigned));
 
-	fclose(cmdFile);
-	return foundInfo;
+    {
+        INT32 n = NonOfficial_GetNBurnSoundLen();
+        if (n > 4096) n = 4096;
+        if (n > 0) {
+            memset(silence_buffer, 0, sizeof(int16_t) * n);
+            NonOfficial_AudioBatchCb(silence_buffer, n);
+        }
+    }
+
+    return 1;
 }
 
-int get_command_dat_count()
+void ResetCommandDatOption(void)
 {
-	if (CommandDataLine.size() == 0) {
-		if (!ReadCommand_Dat()) {
-			return 0;
-		}
-	}
-	return CommandDataLine.size();
+    struct retro_variable var = {0};
+    var.key   = "fbneo-command-dat";
+    var.value = "Off";
+    environ_cb(RETRO_ENVIRONMENT_SET_VARIABLE, &var);
 }
 
-static std::vector<std::string> CommandKeys;
-
-int AddCommandDatOptions(int command_idx_var)
+void ResetCommandDatCache(void)
 {
-	// Guard against stale keys from a previous call
-	CommandKeys.clear();
-
-	if (CommandDataLine.size() == 0) {
-		if (!ReadCommand_Dat()) {
-			return command_idx_var;
-		}
-	}
-
-	const int maxCommandBlocks = CommandDataLine.size();
-	char key[64];
-
-	for (int i = 0; i < maxCommandBlocks; i++) {
-		snprintf_nowarn(key, sizeof(key), "fbneo-commanddat-%d", i);
-		CommandKeys.push_back(key);
-	}
-
-	for (int j = 0; j < maxCommandBlocks; j++) {
-		option_defs_us[command_idx_var].key              = CommandKeys[j].c_str();
-		option_defs_us[command_idx_var].desc             = " ";
-		option_defs_us[command_idx_var].desc_categorized = CommandDataLine[j].c_str();
-		option_defs_us[command_idx_var].info             = NULL;
-		option_defs_us[command_idx_var].category_key     = "command_dat";
-		option_defs_us[command_idx_var].values[0].value  = " ";
-		option_defs_us[command_idx_var].values[1].value  = NULL;
-		option_defs_us[command_idx_var].default_value    = " ";
-		command_idx_var++;
-	}
-
-	return command_idx_var;
+    CommandDat::Unload();
+    g_display_lines.clear();
+    s_cmd_page = 0;
+    s_cmd_lines_per_page = 0;
+    s_cmd_page_count = 0;
+    s_cmd_overlay_on = false;
+    s_cmd_wait_b_release = false;
 }
 
 // [NON-OFFICIAL HACK] Extract the first contiguous block matching matchDrvName

@@ -12,7 +12,7 @@
 */
 
 #ifdef UGUI_USE_FONT_SIMSUN2_13X13
-extern const  UG_FONT FONT_SIMSUN2_13X13[];
+extern const UG_FONT FONT_SIMSUN2_13X13[];
 #endif
 
 #ifdef UGUI_USE_FONT_8X8

@@ -141,11 +141,13 @@ typedef enum
  *   [header 20 bytes]
  *     0   byte0        bit7=0, bit0=font_type
  *     1   reserved     0
- *     2-3 max_ink_w    2B BE
- *     4-5 max_ink_h    2B BE
- *     6-9 number_of_chars 4B BE
- *    10-13 total_size  4B BE
- *    14-19 reserved
+ *     2-3 max_ink_w    2-byte big-endian
+ *     4-5 max_ink_h    2-byte big-endian
+ *     6-9 number_of_chars 4-byte big-endian
+ *    10-13 total_size  4-byte big-endian
+ *    14-15 notdef_adv  2-byte big-endian
+ *    16-17 ascender     2-byte big-endian, signed
+ *    18-19 descender    2-byte big-endian, signed
  *   [codepoints:    number_of_chars * 2B BE, ascending]
  *   [metrics:       number_of_chars * 10B]
  *                     w(2), h(2), x_off(int16), y_off(int16), adv(2)
@@ -188,6 +190,9 @@ typedef struct
     /* new format */
     UG_U16 max_ink_w;
     UG_U16 max_ink_h;
+    UG_U16 notdef_adv;    /* advance for missing glyphs, from font's .notdef */
+    UG_S16 ascender;      /* baseline to line top, positive */
+    UG_S16 descender;     /* baseline to line bottom, usually negative */
     UG_U32 number_of_chars;
     UG_U32 total_size;
     const UG_U8 *codepoints;
@@ -480,11 +485,11 @@ typedef struct
 
 #define UG_STATUS_WAIT_FOR_UPDATE                     (1<<0)
 
-//#include "ugui_button.h"
-//#include "ugui_checkbox.h"
+// #include "ugui_button.h"
+// #include "ugui_checkbox.h"
 #include "ugui_fonts.h"
-//#include "ugui_image.h"
-//#include "ugui_progress.h"
+// #include "ugui_image.h"
+// #include "ugui_progress.h"
 #include "ugui_textbox.h"
 /* -------------------------------------------------------------------------------- */
 /* -- PROTOTYPES                                                                 -- */
@@ -530,7 +535,9 @@ UG_U8 UG_FontGetShadow( void );
 /* Font metric helpers (functions, support both formats) */
 UG_U16 UG_GetFontWidth( UG_FONT* font );
 UG_U16 UG_GetFontHeight( UG_FONT* font );
-
+UG_S16 UG_GetFontAscender( UG_FONT* font );
+UG_S16 UG_GetFontDescender( UG_FONT* font );
+UG_S16 UG_GetFontLineHeight( UG_FONT* font );
 /* Miscellaneous functions */
 void UG_WaitForUpdate( void );
 void UG_Update( void );
@@ -607,5 +614,15 @@ UG_S16 UG_WindowGetInnerWidth( UG_WINDOW* wnd );
 UG_S16 UG_WindowGetOuterWidth( UG_WINDOW* wnd );
 UG_S16 UG_WindowGetInnerHeight( UG_WINDOW* wnd );
 UG_S16 UG_WindowGetOuterHeight( UG_WINDOW* wnd );
+
+#ifdef UGUI_USE_UTF8
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+#endif
 
 #endif

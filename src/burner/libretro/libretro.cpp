@@ -13,6 +13,7 @@
 #include "retro_memory.h"
 #include "ugui_tools.h"
 // [NON-OFFICIAL HACK]
+#include "decode_command.h"
 #include "non_official_features.h"
 #ifdef BUILD_PGM2
 #include "retro_pgm2_cards.h"
@@ -1433,6 +1434,10 @@ void retro_run()
 	}
 #endif
 
+	// [NON-OFFICIAL HACK] command.dat overlay
+	if (CommandDatOverlayTick())
+		return;
+
 	bool bSkipFrame = false;
 
 	InputMake();
@@ -1889,6 +1894,7 @@ static void SetUguiError(const char* error)
 	environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
 	gui_init(nGameWidth, nGameHeight, sizeof(unsigned));
 	gui_set_window_title("FBNeo Error");
+	gui_show_error_mode();
 }
 
 #if defined(BUILD_NEOGEO) || defined(BUILD_PCE)
@@ -1904,6 +1910,25 @@ static bool SetCDEmuImage(const char* path)
 	return true;
 }
 #endif
+
+// [NON-OFFICIAL HACK] accessors for non_official_features.cpp
+void NonOfficial_VideoCb(const void* data, unsigned w, unsigned h, size_t pitch)
+{
+    video_cb(data, w, h, pitch);
+}
+
+void NonOfficial_AudioBatchCb(const int16_t* data, size_t frames)
+{
+    audio_batch_cb(data, frames);
+}
+
+void*  NonOfficial_GetPvidImage(void)     { return pVidImage; }
+int    NonOfficial_GetNBurnBpp(void)      { return nBurnBpp; }
+INT32  NonOfficial_GetNBurnPitch(void)    { return nBurnPitch; }
+INT32  NonOfficial_GetNGameWidth(void)    { return nGameWidth; }
+INT32  NonOfficial_GetNGameHeight(void)   { return nGameHeight; }
+void*  NonOfficial_GetPAudBuffer(void)    { return pAudBuffer; }
+INT32  NonOfficial_GetNBurnSoundLen(void) { return nBurnSoundLen; }
 
 static bool retro_load_game_common()
 {
@@ -2068,6 +2093,9 @@ static bool retro_load_game_common()
 		reset_cheats_from_variables();
 		reset_ipses_from_variables();
 		reset_romdatas_from_variables();
+        // [NON-OFFICIAL HACK] reset command.dat option to Off at boot
+        ResetCommandDatOption();
+		ResetCommandDatCache();
 
 		// Apply core options
 		check_variables();
@@ -2236,6 +2264,12 @@ static bool retro_load_game_common()
 
 		// Initializing display, autorotate if needed
 		BurnDrvGetFullSize(&nGameWidth, &nGameHeight);
+		// [NON-OFFICIAL HACK] Load command.dat for current ROM
+		{
+			std::string cmd_path = std::string(szAppCommandPath) + "command.dat";
+			CommandDat::Load(cmd_path.c_str(), BurnDrvGetText(DRV_NAME));
+			UpdateCommandDatOptionVisibility();
+		}
 		SetRotation();
 		BurnSetResolution(nNewWidth, nNewHeight);
 		SetColorDepth();
@@ -2699,6 +2733,7 @@ void retro_unload_game(void)
 	CheevosExit();
 	RomDataExit();
 	IpsPatchExit();
+	CommandDat::Unload();
 }
 
 static void retro_incomplete_exit()
@@ -2743,6 +2778,7 @@ static void retro_incomplete_exit()
 	}
 	InputExit();
 	CheevosExit();
+	CommandDat::Unload();
 }
 
 unsigned retro_get_region() { return RETRO_REGION_NTSC; }

@@ -1,0 +1,57 @@
+在 libretro 核心的上下文里（你的项目），写文件用 filestream_*，不要用 fopen/fwrite。
+
+c
+RFILE *lf = filestream_open(path,
+                            RETRO_VFS_FILE_ACCESS_WRITE,
+                            RETRO_VFS_FILE_ACCESS_HINT_NONE);
+if (lf) {
+    filestream_printf(lf, "[TRACE] ...\n");
+    filestream_close(lf);
+}
+filestream_open 的 mode 用 RETRO_VFS_FILE_ACCESS_* 常量：
+
+语义	常量
+覆盖写（"w"）	RETRO_VFS_FILE_ACCESS_WRITE
+追加（"a"）	RETRO_VFS_FILE_ACCESS_WRITE | RETRO_VFS_FILE_ACCESS_UPDATE_EXISTING
+读（"r"）	RETRO_VFS_FILE_ACCESS_READ
+写内容：
+
+c
+filestream_printf(lf, "格式 %d\n", x);     // 格式化写
+filestream_write(lf, buf, size);           // 二进制写
+filestream_printf 不支持可变参数的话，先 vsnprintf 到 buf 再 filestream_printf(lf, "%s", buf)。
+
+头文件
+c
+#include <streams/file_stream.h>
+路径
+用 g_save_dir 或 g_system_dir 拼，这是前端给的合法目录。
+
+不要用裸 D:\（VFS 不认）。
+
+末尾分隔符：g_save_dir / g_system_dir 不带尾斜杠，所以要自己加 PATH_DEFAULT_SLASH_C()。
+
+c
+char path[512];
+snprintf(path, sizeof(path), "%s%cfbneo_test.txt", g_save_dir, PATH_DEFAULT_SLASH_C());
+但 szAppCheatsPath 自带尾斜杠（初始化时末尾就是 %c），所以拼的时候不要再加分隔符：
+
+c
+snprintf(path, sizeof(path), "%scheat_cache_dump_mame.txt", szAppCheatsPath);
+为什么不用 fopen
+libretro-common 会把 fopen 宏替换成 rfopen，走 VFS。 理论上 fopen 也能用，但：
+
+路径格式要符合 VFS（不能用 D:\）。
+
+fopen 在某些前端上可能被沙箱拦住。
+
+filestream_* 是显式接口，行为可预测。
+
+直接用 filestream_* 最稳。
+
+如果只是临时调试、不在乎走不走 VFS
+也可以用标准 fopen + fwrite + fclose，但在 libretro 核心的构建里，fopen 可能已经被宏替换了，实际调的还是 VFS。
+
+所以"用什么写文件"的答案：
+
+用 filestream_open / filestream_printf / filestream_write / filestream_close。 这是你之前测通的，也是 libretro 核心的标准写文件接口。

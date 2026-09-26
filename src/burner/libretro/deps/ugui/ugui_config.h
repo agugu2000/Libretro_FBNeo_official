@@ -87,10 +87,10 @@ typedef const UG_U8  UG_FONT;
 */
 typedef unsigned char         UG_U8;
 typedef signed char           UG_S8;
-typedef unsigned int          UG_U16;
-typedef signed int            UG_S16;
-typedef unsigned long int     UG_U32;
-typedef signed long int       UG_S32;
+typedef unsigned short        UG_U16;
+typedef signed short          UG_S16;
+typedef unsigned int          UG_U32;
+typedef signed int            UG_S32;
 typedef const UG_U8           UG_FONT;
 
 #endif //__UGUI_CONFIG_H

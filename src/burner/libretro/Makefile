@@ -35,7 +35,7 @@ ifeq ($(platform), aarch64)
   CC        = aarch64-linux-gnu-gcc
   CXX       = aarch64-linux-gnu-g++
   ARCH      = arm64
-  COMMON_FLAGS += -march=armv8-a -mtune=cortex-a53
+  COMMON_FLAGS += -march=armv8-a -mtune=cortex-a53 -mno-outline-atomics
   CFLAGS    = -std=gnu99 $(COMMON_FLAGS)
   CXXFLAGS  = -std=c++11 $(COMMON_FLAGS)
   HAVE_NEON = 0
@@ -76,14 +76,15 @@ override GIT_VERSION := " [Modified by aGuGu]"
 CXXFLAGS += -DGIT_VERSION=\"$(GIT_VERSION)\"
 
 # TARGET
+SOURCES_CXX += $(LIBRETRO_DIR)/decode_command.cpp
+SOURCES_CXX += $(LIBRETRO_DIR)/non_official_features.cpp
+
 ifeq ($(SUBSET),)
 	TARGET_NAME := fbneo_advanced
 	INCLUDED_MAKEFILE = Makefile.all
-	SOURCES_CXX += $(LIBRETRO_DIR)/non_official_features.cpp
 else
 	TARGET_NAME := fbneo_$(SUBSET)
 	INCLUDED_MAKEFILE = Makefile.$(SUBSET)
-	SOURCES_CXX += $(LIBRETRO_DIR)/non_official_features.cpp
 endif
 
 # Unix

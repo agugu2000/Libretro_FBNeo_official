@@ -18,12 +18,13 @@
 #include "retro_common.h"
 #include <vector>
 #include <string>
+#include "decode_command.h"
 
 // ---------------------------------------------------------------------------
-// Localized strings (18 entries, independent of official NUM_STRING)
+// Localized strings (20 entries, independent of official NUM_STRING)
 // ---------------------------------------------------------------------------
 
-#define NUM_STRING_NONOFFICIAL	18
+#define NUM_STRING_NONOFFICIAL	20
 
 extern const char* pSelLangStrNonOfficial[NUM_STRING_NONOFFICIAL];
 extern const char* multi_language_strings_nonofficial[MAX_LANGUAGES][NUM_STRING_NONOFFICIAL];
@@ -46,6 +47,8 @@ extern const char* multi_language_strings_nonofficial[MAX_LANGUAGES][NUM_STRING_
 #define RETRO_IGNORE_CRC_INFO				pSelLangStrNonOfficial[15]
 #define RETRO_COMMAND_DAT_CAT_DESC			pSelLangStrNonOfficial[16]
 #define RETRO_COMMAND_DAT_CAT_INFO			pSelLangStrNonOfficial[17]
+#define RETRO_COMMAND_OFF_LABEL			    pSelLangStrNonOfficial[18]
+#define RETRO_COMMAND_SHOW_LABEL		    pSelLangStrNonOfficial[19]
 
 // ---------------------------------------------------------------------------
 // Custom combination-key macros
@@ -164,6 +167,10 @@ struct SymbolMapping {
 };
 
 int get_command_dat_count();
-int AddCommandDatOptions(int command_idx_var);
+int AddCommandDatOption(int idx_var);
+void UpdateCommandDatOptionVisibility(void);
+int CommandDatOverlayTick(void);
+void ResetCommandDatOption(void);
+void ResetCommandDatCache(void);
 
 #endif // NON_OFFICIAL_FEATURES_H
