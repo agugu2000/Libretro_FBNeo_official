@@ -29,7 +29,7 @@ void gui_hide_overlay(void);
 int  gui_is_overlay_visible(void);
 int  gui_get_mode(void);
 void gui_show_error_mode(void);
-void gui_blend_onto(void* dst, int dst_bpp, int w, int h);
+void gui_blend_onto(void* dst, int dst_bpp, int dst_w, int dst_h, int dst_pitch);
 int gui_get_line_height(void);
 int gui_get_inner_height(void);
 int gui_get_inner_width(void);

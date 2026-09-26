@@ -7,7 +7,7 @@
 
 #define UGUI_MAX_OBJECTS 2
 #define GUI_CONTENT_TOP_OFFSET 5
-#define GUI_CONTENT_LEFT_OFFSET 20
+#define GUI_CONTENT_LEFT_OFFSET 10
 static UG_GUI gui;
 static UG_WINDOW gui_window;
 static UG_TEXTBOX gui_textbox;
@@ -334,26 +334,38 @@ void gui_show_error_mode(void)
    UG_WindowShow(&gui_window);
 }
 
-void gui_blend_onto(void* dst, int dst_bpp, int w, int h)
+void gui_blend_onto(void* dst, int dst_bpp, int dst_w, int dst_h, int dst_pitch)
 {
    if (!frame_buf || !dst || gui_mode != GUI_MODE_OVERLAY) {
       return;
    }
 
-   int n = w * h;
-   if (n > width * height) n = width * height;
+   int src_w = width;
+   int src_h = height;
 
-   if (dst_bpp == 4) {
-      unsigned* d = (unsigned*)dst;
-      memcpy(d, frame_buf, (size_t)n * sizeof(unsigned));
-   } else if (dst_bpp == 2) {
-      unsigned short* d = (unsigned short*)dst;
-      for (int i = 0; i < n; i++) {
-         unsigned c = frame_buf[i];
-         unsigned short r = (c >> 16) & 0xFF;
-         unsigned short g = (c >> 8)  & 0xFF;
-         unsigned short b =  c        & 0xFF;
-         d[i] = (unsigned short)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+   if (src_w != dst_w || src_h != dst_h) {
+      return;
+   }
+
+   unsigned char* base = (unsigned char*)dst;
+
+   for (int y = 0; y < dst_h; y++) {
+      unsigned char* row = base + (size_t)y * dst_pitch;
+
+      if (dst_bpp == 4) {
+         unsigned* d = (unsigned*)row;
+         const unsigned* s = frame_buf + (size_t)y * src_w;
+         memcpy(d, s, (size_t)src_w * sizeof(unsigned));
+      } else if (dst_bpp == 2) {
+         unsigned short* d = (unsigned short*)row;
+         const unsigned* s = frame_buf + (size_t)y * src_w;
+         for (int x = 0; x < dst_w; x++) {
+            unsigned c = s[x];
+            unsigned short r = (c >> 16) & 0xFF;
+            unsigned short g = (c >> 8)  & 0xFF;
+            unsigned short b =  c        & 0xFF;
+            d[x] = (unsigned short)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+         }
       }
    }
 }

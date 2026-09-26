@@ -710,8 +710,8 @@ int CommandDatOverlayTick(void)
 			all += "\n";
 		}
 
-        // gui_init(NonOfficial_GetNGameWidth(), NonOfficial_GetNGameHeight(), sizeof(unsigned));
-		gui_init(640, 480, sizeof(unsigned));
+        gui_init(NonOfficial_GetNGameWidth(), NonOfficial_GetNGameHeight(), sizeof(unsigned));
+		// gui_init(640, 480, sizeof(unsigned));
 
 		int inner_w = gui_get_content_width();
 		BuildDisplayLines(all, inner_w);
@@ -789,15 +789,16 @@ int CommandDatOverlayTick(void)
 
     // ---- 渲染 + 合成 + 静音 ----
     gui_draw();
-    // gui_blend_onto(NonOfficial_GetPvidImage(), NonOfficial_GetNBurnBpp(),
-    //                NonOfficial_GetNGameWidth(), NonOfficial_GetNGameHeight());
-    // NonOfficial_VideoCb(NonOfficial_GetPvidImage(),
-    //                     NonOfficial_GetNGameWidth(),
-    //                     NonOfficial_GetNGameHeight(),
-    //                     NonOfficial_GetNBurnPitch());
-	NonOfficial_VideoCb(gui_get_framebuffer(),
-						640, 480,
-						640 * sizeof(unsigned));
+	gui_blend_onto(NonOfficial_GetPvidImage(), NonOfficial_GetNBurnBpp(),
+				NonOfficial_GetNGameWidth(), NonOfficial_GetNGameHeight(),
+				NonOfficial_GetNBurnPitch());
+    NonOfficial_VideoCb(NonOfficial_GetPvidImage(),
+                        NonOfficial_GetNGameWidth(),
+                        NonOfficial_GetNGameHeight(),
+                        NonOfficial_GetNBurnPitch());
+	// NonOfficial_VideoCb(gui_get_framebuffer(),
+	// 					640, 480,
+	// 					640 * sizeof(unsigned));
 
     {
         INT32 n = NonOfficial_GetNBurnSoundLen();
